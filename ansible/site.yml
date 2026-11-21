@@ -1,0 +1,66 @@
+---
+# Play 0: Wait for nodes to be online and cloud-init to finish completely
+- name: Pre-flight Verification & Cloud-Init Wait
+  hosts: k8s_cluster
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Wait for SSH port 22 to be available
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 300
+
+    - name: Wait for cloud-init to complete all bootstrap tasks
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+
+# Play 1: Prepare all cluster nodes with container runtime and k8s binaries
+- name: Configure Common Prerequisites across All Nodes
+  hosts: k8s_cluster
+  gather_facts: true
+  become: true
+  roles:
+    - common
+
+# Play 2: Initialize Control Plane and Deploy CNI
+- name: Bootstrap Kubernetes Control Plane
+  hosts: control_plane
+  gather_facts: false
+  become: true
+  roles:
+    - control_plane
+
+# Play 3: Join Worker Nodes to the Cluster
+- name: Join Worker Nodes to Cluster
+  hosts: workers
+  gather_facts: false
+  become: true
+  roles:
+    - worker
+
+# Play 4: Cluster Health Verification
+- name: Verify Kubernetes Cluster State
+  hosts: control_plane
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Wait for all nodes to reach Ready status
+      ansible.builtin.command: kubectl get nodes --no-headers
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: nodes_status
+      until: "nodes_status.stdout.find('NotReady') == -1"
+      retries: 20
+      delay: 5
+      changed_when: false
+
+    - name: Display Cluster Nodes Overview
+      ansible.builtin.command: kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: final_nodes
+      changed_when: false
+
+    - name: Output Cluster Summary
+      ansible.builtin.debug:
+        var: final_nodes.stdout_lines

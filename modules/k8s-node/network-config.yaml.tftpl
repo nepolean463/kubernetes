@@ -1,0 +1,17 @@
+version: 2
+ethernets:
+  lan0:
+    match:
+      name: "e*"
+    dhcp4: false
+    dhcp6: false
+    addresses:
+      - ${ip_cidr}
+    routes:
+      - to: default
+        via: ${gateway}
+    nameservers:
+      addresses:
+%{ for dns in dns_servers ~}
+        - ${dns}
+%{ endfor ~}

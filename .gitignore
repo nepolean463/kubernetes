@@ -1,0 +1,36 @@
+# Terraform local directories and state files
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Environment-specific tfvars (keep .example committed)
+terraform.tfvars
+*.auto.tfvars
+
+# Kubernetes credentials & cluster configs
+kubeconfig
+*.kubeconfig
+*.conf
+
+# Ansible virtual environment and caches
+ansible/.venv/
+ansible/.ansible/
+ansible/*.retry
+ansible/facts_cache/
+*.pyc
+__pycache__/
+
+# System & Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

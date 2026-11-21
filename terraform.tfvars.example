@@ -1,0 +1,18 @@
+# Example variable values for k8s-terraform
+# Copy this file to terraform.tfvars and customize for your environment.
+
+# Path to your SSH public key on the hypervisor host
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# Content of your SSH public key (used in cloud-init user creation)
+ssh_public_key      = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@hostname"
+
+# Existing Linux bridge interface on the host attached to your LAN
+host_bridge         = "bridge0"
+
+# Libvirt virtual network name
+network_name        = "k8s-lan-bridge"
+
+# Default LAN Gateway and DNS resolvers
+gateway             = "192.168.1.1"
+dns_servers         = ["8.8.8.8", "1.1.1.1"]

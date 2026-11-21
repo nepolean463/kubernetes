@@ -1,0 +1,99 @@
+#cloud-config
+hostname: ${hostname}
+fqdn: ${hostname}.local
+manage_etc_hosts: false
+
+users:
+  - name: ubuntu
+    gecos: Ubuntu User
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: [sudo, adm]
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: "$6$k8scluster$JrD.2j6rArWQEFXRPrnEMxkHxoGKUVYPt3aY5//V/KBUObmka5tg4ErDHNCFrH.GzOaKGvTylxUiQuop6z77n."
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - openssh-server
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gpg
+  - containerd
+  - socat
+  - conntrack
+  - ipset
+  - ethtool
+
+write_files:
+  - path: /etc/modules-load.d/k8s.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      overlay
+      br_netfilter
+
+  - path: /etc/sysctl.d/99-kubernetes-cri.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward                 = 1
+
+  - path: /etc/hosts
+    owner: root:root
+    permissions: '0644'
+    append: true
+    content: |
+      192.168.1.210 k8s-cp-1
+      192.168.1.211 k8s-worker-1
+      192.168.1.212 k8s-worker-2
+
+  - path: /etc/crictl.yaml
+    owner: root:root
+    permissions: '0644'
+    content: |
+      runtime-endpoint: unix:///run/containerd/containerd.sock
+      image-endpoint: unix:///run/containerd/containerd.sock
+      timeout: 10
+      debug: false
+
+runcmd:
+  # 1. Disable swap immediately and persistently
+  - swapoff -a
+  - sed -i '/swap/d' /etc/fstab
+  - systemctl mask swap.target
+
+  # 2. Kernel modules & sysctl settings for Kubernetes networking
+  - modprobe overlay
+  - modprobe br_netfilter
+  - sysctl --system
+
+  # 3. Configure containerd with SystemdCgroup = true
+  - mkdir -p /etc/containerd
+  - containerd config default > /etc/containerd/config.toml
+  - sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  - systemctl daemon-reload
+  - systemctl restart containerd
+  - systemctl enable containerd
+
+  # 4. Add official Kubernetes v1.35 APT repository and signing key
+  - mkdir -p -m 755 /etc/apt/keyrings
+  - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  - chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
+
+  # 5. Install and hold kubelet, kubeadm, and kubectl
+  - apt-get update
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y kubelet kubeadm kubectl
+  - apt-mark hold kubelet kubeadm kubectl
+  - systemctl daemon-reload
+  - systemctl enable --now kubelet
+
+  # 6. Ensure SSH is started
+  - systemctl restart ssh.socket || systemctl restart ssh || true
