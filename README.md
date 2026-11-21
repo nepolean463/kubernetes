@@ -1,8 +1,8 @@
 # Local Kubernetes Cluster on KVM/libvirt with Terraform & Ansible
 
-A modular, production-standard Infrastructure-as-Code (Terraform) and Configuration Management (Ansible) project to provision and bootstrap a 3-node Kubernetes cluster on local KVM/libvirt.
+A modular, production-standard Infrastructure-as-Code (Terraform) and Configuration Management (Ansible) project to provision and bootstrap a 3-node Kubernetes cluster (`v1.35`) on local KVM/libvirt.
 
-All nodes are bridged directly to the host's physical network via `bridge0` (`192.168.1.0/24`), making the cluster and its workloads accessible to other machines across the local LAN.
+All nodes are bridged directly to the host's physical network via `bridge0` (`192.168.1.0/24`). Includes **MetalLB** bare-metal Layer 2 load balancing and the **Kubernetes Web Dashboard** exposed on standard HTTPS port `443`.
 
 ---
 
@@ -20,9 +20,14 @@ All nodes are bridged directly to the host's physical network via `bridge0` (`19
 │ 192.168.1.210           │ │ 192.168.1.211       │ │ 192.168.1.212             │
 │ Control Plane (v1.35)   │ │ Worker Node (v1.35) │ │ Worker Node (v1.35)       │
 │ 2 vCPU / 4096 MiB RAM   │ │ 2 vCPU / 2048 MiB   │ │ 2 vCPU / 2048 MiB         │
-│ Flannel CNI (Pod CIDR:  │ │ containerd runtime  │ │ containerd runtime        │
-│   10.244.0.0/16)        │ │                     │ │                           │
+│ Flannel CNI             │ │ containerd runtime  │ │ containerd runtime        │
 └─────────────────────────┘ └─────────────────────┘ └───────────────────────────┘
+                                        │
+           ┌────────────────────────────┴────────────────────────────┐
+           ▼                                                         ▼
+[ MetalLB Layer 2 Pool ]                               [ Kubernetes Web Dashboard ]
+  IP Range: 192.168.1.220 - 192.168.1.230                VIP: https://192.168.1.220 (Port 443)
+  Automatic bare-metal LoadBalancer IPs                  Full OpenShift-like UI experience
 ```
 
 ---
@@ -40,12 +45,16 @@ All nodes are bridged directly to the host's physical network via `bridge0` (`19
 ├── docs/
 │   ├── PREREQUISITES.md        # Ubuntu hypervisor, network bridge, and host setup
 │   └── MOP.md                  # Method of Procedure (Deployment, Operations, Teardown)
+├── manifests/
+│   ├── dashboard.yaml          # Kubernetes Dashboard with LoadBalancer on port 443 & admin RBAC
+│   ├── metallb-config.yaml     # MetalLB IPAddressPool (192.168.1.220-230) & L2Advertisement
+│   └── metallb-native.yaml     # Official MetalLB native operator manifest
 ├── main.tf                     # Base Ubuntu volume & module invocations
 ├── network.tf                  # libvirt_network bridge0 mapping
 ├── outputs.tf                  # Node IP maps and ready-to-run SSH strings
 ├── providers.tf                # dmacvicar/libvirt (~> 0.9.9) provider definition
-├── variables.tf                # Sizing, networking, and cluster variables
-├── terraform.tfvars.example    # Template variable values for new deployments
+├── variables.tf                # Sizing, networking, and zero-config cluster variables
+├── terraform.tfvars.example    # Template variable values for custom environments
 ├── modules/
 │   └── k8s-node/               # Reusable KVM VM node module
 │       ├── main.tf             # Domain, backing store volume, cloud-init ISO
@@ -56,8 +65,9 @@ All nodes are bridged directly to the host's physical network via `bridge0` (`19
 │       └── network-config.yaml.tftpl # Netplan v2 static LAN configuration
 └── ansible/                    # Production-grade Ansible automation
     ├── ansible.cfg             # SSH pipelining, sudo, inventory configuration
-    ├── inventory.ini.example   # Example cluster inventory
-    ├── site.yml                # Main orchestrator playbook (includes pre-flight wait)
+    ├── inventory.ini           # Cluster inventory (control_plane, workers)
+    ├── inventory.ini.example   # Example cluster inventory template
+    ├── site.yml                # Main orchestrator playbook (pre-flight, k8s, MetalLB, Dashboard)
     └── roles/
         ├── common/             # Kernel modules, sysctl, containerd, k8s packages
         ├── control_plane/      # kubeadm init, Flannel CNI, kubeconfig fetch
@@ -77,9 +87,9 @@ cd ~/k8s-terraform
 terraform apply -auto-approve
 ```
 
-### 2. Ansible Kubernetes Bootstrap (Zero-Wait)
+### 2. Ansible Kubernetes & Addon Bootstrap (Zero-Wait)
 
-You can run Ansible immediately after `terraform apply`. Playbook Play 0 automatically waits for SSH and `cloud-init` to finish before executing tasks:
+Run Ansible immediately after `terraform apply`. Playbook Play 0 automatically waits for SSH and `cloud-init` to finish before executing tasks:
 
 ```bash
 cd ~/k8s-terraform/ansible
@@ -90,29 +100,27 @@ source .venv/bin/activate
 # 1. Test user-level connectivity
 ansible -m ping all
 
-# 2. Run full cluster bootstrap and join
+# 2. Run full cluster bootstrap, MetalLB, and Dashboard deployment
 ansible-playbook -i inventory.ini site.yml
 ```
 
-### 3. Fast Cluster Teardown & Rebuild
+At completion, the playbook prints your exact Dashboard URL and admin token directly in the terminal recap!
 
-To completely destroy and rebuild the cluster while preserving the cached base image:
+---
 
-```bash
-# Destroy only the VM instances and disks (keeps ubuntu-base cached)
-terraform destroy -target=module.control_plane -target=module.workers -auto-approve
+## 🌐 Web Dashboard Access
 
-# Clean old SSH host keys from host
-ssh-keygen -R 192.168.1.210 2>/dev/null
-ssh-keygen -R 192.168.1.211 2>/dev/null
-ssh-keygen -R 192.168.1.212 2>/dev/null
+The **Kubernetes Dashboard** is exposed via MetalLB on standard HTTPS port `443` (no port number needed):
 
-# Recreate VMs in ~10 seconds
-terraform apply -auto-approve
-
-# Re-run cluster bootstrap
-cd ansible && ansible-playbook -i inventory.ini site.yml
-```
+1. Open your browser on any device on your LAN:
+   ```
+   https://192.168.1.220
+   ```
+2. Accept the self-signed certificate warning (**Advanced** $\rightarrow$ **Proceed to 192.168.1.220**).
+3. Retrieve and paste your admin token:
+   ```bash
+   kubectl get secret admin-user-token -n kubernetes-dashboard -o jsonpath='{.data.token}' | base64 -d && echo
+   ```
 
 ---
 
@@ -120,7 +128,7 @@ cd ansible && ansible-playbook -i inventory.ini site.yml
 
 ### From the Host Machine
 
-`kubectl` can be pointed to the generated kubeconfig:
+`kubectl` is automatically pointed to the generated kubeconfig:
 
 ```bash
 export KUBECONFIG=~/k8s-terraform/kubeconfig
@@ -151,11 +159,36 @@ ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.212
 
 ---
 
+## 🔄 Fast Cluster Teardown & Rebuild
+
+To completely destroy and rebuild the cluster from scratch in under 2 minutes:
+
+```bash
+# 1. Destroy only the VM instances and disks (keeps ubuntu base image cached)
+terraform destroy -target=module.control_plane -target=module.workers -auto-approve
+
+# 2. Clean old SSH host keys from host
+ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; rm -f kubeconfig ~/.kube/config
+
+# 3. Recreate VMs in ~10 seconds
+terraform apply -auto-approve
+
+# 4. Re-run bootstrap (deploys k8s, MetalLB, and Dashboard automatically)
+cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
+```
+
+---
+
 ## 🛠️ Verification Output
 
-```
-NAME           STATUS   ROLES           AGE    VERSION    INTERNAL-IP     OS-IMAGE             CONTAINER-RUNTIME
-k8s-cp-1       Ready    control-plane   3m     v1.35.10   192.168.1.210   Ubuntu 24.04.5 LTS   containerd://2.2.1
-k8s-worker-1   Ready    <none>          3m     v1.35.10   192.168.1.211   Ubuntu 24.04.5 LTS   containerd://2.2.1
-k8s-worker-2   Ready    <none>          3m     v1.35.10   192.168.1.212   Ubuntu 24.04.5 LTS   containerd://2.2.1
+```bash
+$ kubectl get nodes -o wide
+NAME           STATUS   ROLES           AGE   VERSION    INTERNAL-IP     OS-IMAGE             CONTAINER-RUNTIME
+k8s-cp-1       Ready    control-plane   60m   v1.35.10   192.168.1.210   Ubuntu 24.04.5 LTS   containerd://2.2.1
+k8s-worker-1   Ready    <none>          60m   v1.35.10   192.168.1.211   Ubuntu 24.04.5 LTS   containerd://2.2.1
+k8s-worker-2   Ready    <none>          60m   v1.35.10   192.168.1.212   Ubuntu 24.04.5 LTS   containerd://2.2.1
+
+$ kubectl get svc -n kubernetes-dashboard
+NAME                   TYPE           CLUSTER-IP       EXTERNAL-IP     PORT(S)         AGE
+kubernetes-dashboard   LoadBalancer   10.100.108.197   192.168.1.220   443:30443/TCP   15m
 ```
