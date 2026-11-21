@@ -54,8 +54,8 @@ variable "ssh_public_key_path" {
 
 variable "ssh_public_key" {
   type        = string
-  description = "Raw SSH public key string (if provided, takes precedence over ssh_public_key_path)"
-  default     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEm3xTfrh3EA9oVMvL6Zb9ETZwJlnxo9nz/EjWpdgdLF nepo@nepo-OptiPlex-3060"
+  description = "Raw SSH public key string (if empty, automatically reads from ssh_public_key_path)"
+  default     = ""
 }
 
 variable "control_plane" {
