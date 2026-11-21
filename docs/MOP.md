@@ -108,6 +108,7 @@ ansible-playbook -i inventory.ini site.yml
 3. **Play 2 (Control Plane):** Executes `kubeadm init --pod-network-cidr=10.244.0.0/16`, configures `/home/ubuntu/.kube/config`, deploys Flannel CNI, and pulls the cluster admin kubeconfig to the host.
 4. **Play 3 (Workers):** Dynamically retrieves a join token from the control plane and joins worker nodes.
 5. **Play 4 (Verification):** Polls node readiness until all 3 nodes report `Ready`.
+6. **Play 5 (Addons - MetalLB & Dashboard):** Configures `strictARP: true` in kube-proxy, deploys MetalLB operator, creates the LAN IP pool (`192.168.1.220-230`), deploys the Kubernetes Dashboard as a LoadBalancer on port `443`, and prints the access URL (`https://192.168.1.220`) and admin token directly in the terminal!
 
 ---
 
