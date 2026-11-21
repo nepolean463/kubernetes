@@ -64,3 +64,98 @@
     - name: Output Cluster Summary
       ansible.builtin.debug:
         var: final_nodes.stdout_lines
+
+# Play 5: Automatically Deploy MetalLB & Kubernetes Dashboard
+- name: Deploy Core Cluster Addons (MetalLB & Dashboard)
+  hosts: control_plane
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Enable strictARP in kube-proxy for MetalLB Layer 2
+      ansible.builtin.shell: >
+        kubectl get configmap kube-proxy -n kube-system -o yaml |
+        sed -e "s/strictARP: false/strictARP: true/" |
+        kubectl apply -f - -n kube-system
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      changed_when: false
+
+    - name: Deploy MetalLB Native Operator
+      ansible.builtin.command: >
+        kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.9/config/manifests/metallb-native.yaml
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: metallb_deploy
+      changed_when: "'created' in metallb_deploy.stdout"
+
+    - name: Wait for MetalLB controller deployment to be ready
+      ansible.builtin.command: >
+        kubectl rollout status deployment/controller -n metallb-system --timeout=120s
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      changed_when: false
+
+    - name: Copy MetalLB IPAddressPool and L2Advertisement configuration
+      ansible.builtin.copy:
+        src: ../manifests/metallb-config.yaml
+        dest: /home/ubuntu/metallb-config.yaml
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Apply MetalLB Pool & L2 Advertisement
+      ansible.builtin.command: kubectl apply -f /home/ubuntu/metallb-config.yaml
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: metallb_conf
+      changed_when: "'created' in metallb_conf.stdout"
+
+    - name: Copy Kubernetes Dashboard manifest
+      ansible.builtin.copy:
+        src: ../manifests/dashboard.yaml
+        dest: /home/ubuntu/dashboard.yaml
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Deploy Kubernetes Dashboard with LoadBalancer and Admin RBAC
+      ansible.builtin.command: kubectl apply -f /home/ubuntu/dashboard.yaml
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: dash_deploy
+      changed_when: "'created' in dash_deploy.stdout"
+
+    - name: Wait for Kubernetes Dashboard deployment to be ready
+      ansible.builtin.command: >
+        kubectl rollout status deployment/kubernetes-dashboard -n kubernetes-dashboard --timeout=120s
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      changed_when: false
+
+    - name: Retrieve Dashboard LoadBalancer IP
+      ansible.builtin.command: >
+        kubectl get svc kubernetes-dashboard -n kubernetes-dashboard -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: dashboard_ip
+      until: dashboard_ip.stdout != ""
+      retries: 10
+      delay: 3
+      changed_when: false
+
+    - name: Retrieve Dashboard Admin Access Token
+      ansible.builtin.command: >
+        kubectl get secret admin-user-token -n kubernetes-dashboard -o jsonpath='{.data.token}'
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: raw_token
+      changed_when: false
+
+    - name: Display Cluster Access Details
+      ansible.builtin.debug:
+        msg:
+          - "=========================================================="
+          - "🎉 KUBERNETES CLUSTER & ADDONS READY!"
+          - "🌐 Dashboard URL: https://{{ dashboard_ip.stdout }}"
+          - "🔑 Admin Token:   {{ raw_token.stdout | b64decode }}"
+          - "=========================================================="

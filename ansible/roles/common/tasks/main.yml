@@ -63,6 +63,7 @@
       - containerd
     state: present
     update_cache: true
+    cache_valid_time: 3600
 
 - name: Create containerd configuration directory
   ansible.builtin.file:
@@ -121,6 +122,7 @@
       - kubectl
     state: present
     update_cache: true
+    cache_valid_time: 3600
 
 - name: Hold Kubernetes packages at current version
   ansible.builtin.dpkg_selections:
