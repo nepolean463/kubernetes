@@ -61,16 +61,16 @@ resource "libvirt_volume" "cloudinit_vol" {
   name = "${var.node_name}-cloudinit.iso"
   pool = var.libvirt_pool
 
-  target = {
-    format = {
-      type = "raw"
-    }
-  }
-
   create = {
     content = {
       url = libvirt_cloudinit_disk.init.path
     }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      target
+    ]
   }
 }
 
