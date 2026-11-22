@@ -63,7 +63,7 @@ resource "libvirt_volume" "cloudinit_vol" {
 
   target = {
     format = {
-      type = "iso"
+      type = "raw"
     }
   }
 
