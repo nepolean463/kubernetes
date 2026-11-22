@@ -82,7 +82,7 @@ resource "libvirt_domain" "node" {
   vcpu        = var.vcpu
   type        = "kvm"
   running     = true
-  autostart   = true
+  autostart   = var.autostart
 
   cpu = {
     mode = "host-passthrough"

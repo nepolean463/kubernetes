@@ -69,13 +69,25 @@ until [[ $(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready") -eq 6 ]
 done
 echo "  ✅ All 6 nodes are Ready!"
 
-# 5. Clear Ceph 'noout' flag
+# 5. Wait for Ceph OSDs to come back up before unsetting noout
 echo ""
-echo "🔓 Step 5: Unsetting Ceph 'noout' flag..."
-sleep 5
+echo "⏳ Step 5: Waiting for all 3 Ceph OSDs to reconnect..."
+retries=0
+while [[ $retries -lt 30 ]]; do
+  if kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd stat 2>/dev/null | grep -q "3 up, 3 in"; then
+    echo "  ✅ All 3 Ceph OSDs are online (3 up, 3 in)!"
+    break
+  fi
+  sleep 4
+  retries=$((retries + 1))
+done
+
+# 6. Clear Ceph 'noout' flag
+echo ""
+echo "🔓 Step 6: Unsetting Ceph 'noout' flag (safe: all OSDs are online)..."
 kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd unset noout 2>/dev/null || true
 
-# 6. Display Cluster & Ceph Status
+# 7. Display Cluster & Ceph Status
 echo ""
 echo "=========================================================="
 echo "🎉 Cluster is Fully Operational!"

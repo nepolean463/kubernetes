@@ -80,3 +80,9 @@ variable "ssh_public_key" {
   type        = string
   description = "Authorized SSH public key content"
 }
+
+variable "autostart" {
+  type        = bool
+  description = "Whether libvirt automatically starts this domain when the host boots"
+  default     = false
+}
