@@ -91,10 +91,10 @@ runcmd:
   - chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
 
-  # 5. Install and hold kubelet, kubeadm, and kubectl
+  # 5. Install and hold kubelet, kubeadm, kubectl, and cri-tools
   - apt-get update
-  - DEBIAN_FRONTEND=noninteractive apt-get install -y kubelet kubeadm kubectl
-  - apt-mark hold kubelet kubeadm kubectl
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y kubelet kubeadm kubectl cri-tools
+  - apt-mark hold kubelet kubeadm kubectl cri-tools
   - systemctl daemon-reload
   - systemctl enable --now kubelet
 

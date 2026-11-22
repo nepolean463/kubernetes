@@ -114,12 +114,13 @@
     mode: '0644'
     content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /\n"
 
-- name: Install kubelet, kubeadm, and kubectl
+- name: Install kubelet, kubeadm, kubectl, and cri-tools
   ansible.builtin.apt:
     name:
       - kubelet
       - kubeadm
       - kubectl
+      - cri-tools
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -132,6 +133,7 @@
     - kubelet
     - kubeadm
     - kubectl
+    - cri-tools
 
 - name: Ensure kubelet is enabled
   ansible.builtin.systemd:
