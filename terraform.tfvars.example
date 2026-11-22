@@ -17,3 +17,8 @@ internal_network_name = "k8s-internal"
 # Default LAN Gateway and DNS resolvers
 gateway             = "192.168.1.1"
 dns_servers         = ["8.8.8.8", "1.1.1.1"]
+
+# (Optional) Use local Golden Base Image for zero-internet / instant deployments:
+# Build once with: ./scripts/build-golden-image.sh
+# base_image_name = "k8s-cluster-base.qcow2"
+# base_image_url  = "file:///var/lib/libvirt/images/ubuntu-24.04-k8s-golden.qcow2"

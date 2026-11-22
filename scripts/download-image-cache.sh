@@ -25,6 +25,11 @@ CACHE_FILE="${CACHE_DIR}/ceph-images.tar"
 ROOK_IMAGE="docker.io/rook/ceph:v1.15.5"
 CEPH_IMAGE="quay.io/ceph/ceph:v18.2.4"
 CSI_IMAGE="quay.io/cephcsi/cephcsi:v3.12.2"
+CSI_REGISTRAR="registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.11.1"
+CSI_RESIZER="registry.k8s.io/sig-storage/csi-resizer:v1.11.1"
+CSI_PROVISIONER="registry.k8s.io/sig-storage/csi-provisioner:v5.0.1"
+CSI_SNAPSHOTTER="registry.k8s.io/sig-storage/csi-snapshotter:v8.0.1"
+CSI_ATTACHER="registry.k8s.io/sig-storage/csi-attacher:v4.6.1"
 
 echo "=========================================================="
 echo "📦 Ceph Container Image Cache Downloader"
@@ -38,17 +43,25 @@ fi
 
 mkdir -p "${CACHE_DIR}"
 
+IMAGES=(
+  "${ROOK_IMAGE}"
+  "${CEPH_IMAGE}"
+  "${CSI_IMAGE}"
+  "${CSI_REGISTRAR}"
+  "${CSI_RESIZER}"
+  "${CSI_PROVISIONER}"
+  "${CSI_SNAPSHOTTER}"
+  "${CSI_ATTACHER}"
+)
+
 echo "⬇️  Pulling images..."
-docker pull "${ROOK_IMAGE}"
-docker pull "${CEPH_IMAGE}"
-docker pull "${CSI_IMAGE}"
+for img in "${IMAGES[@]}"; do
+  echo "  -> Pulling ${img}..."
+  docker pull "${img}"
+done
 
 echo "💾 Saving images to ${CACHE_FILE}..."
-docker save \
-  "${ROOK_IMAGE}" \
-  "${CEPH_IMAGE}" \
-  "${CSI_IMAGE}" \
-  -o "${CACHE_FILE}"
+docker save "${IMAGES[@]}" -o "${CACHE_FILE}"
 
 echo "=========================================================="
 echo "✅ Image cache created successfully!"

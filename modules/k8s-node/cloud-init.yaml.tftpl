@@ -14,22 +14,8 @@ users:
     ssh_authorized_keys:
       - ${ssh_public_key}
 
-package_update: true
+package_update: false
 package_upgrade: false
-
-packages:
-  - openssh-server
-  - apt-transport-https
-  - ca-certificates
-  - curl
-  - gpg
-  - containerd
-  - socat
-  - conntrack
-  - ipset
-  - ethtool
-  - lvm2
-  - xfsprogs
 
 write_files:
   - path: /etc/modules-load.d/k8s.conf
@@ -87,24 +73,32 @@ runcmd:
   - modprobe rbd
   - sysctl --system
 
-  # 3. Configure containerd with SystemdCgroup = true
+  # 3. Install packages and Kubernetes repo (only executed if not booting from golden image)
+  - |
+    if ! command -v kubeadm &>/dev/null; then
+      apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server apt-transport-https ca-certificates curl gpg containerd socat conntrack ipset ethtool lvm2 xfsprogs
+      mkdir -p -m 755 /etc/apt/keyrings
+      curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
+      apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y kubelet kubeadm kubectl cri-tools
+      apt-mark hold kubelet kubeadm kubectl cri-tools
+    fi
+
+  # 4. Ensure containerd config with SystemdCgroup = true
   - mkdir -p /etc/containerd
-  - containerd config default > /etc/containerd/config.toml
-  - sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  - |
+    if [ ! -s /etc/containerd/config.toml ]; then
+      containerd config default > /etc/containerd/config.toml
+      sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+    fi
   - systemctl daemon-reload
   - systemctl restart containerd
   - systemctl enable containerd
 
-  # 4. Add official Kubernetes v1.35 APT repository and signing key
-  - mkdir -p -m 755 /etc/apt/keyrings
-  - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | gpg --dearmor --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  - chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  - echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
-
-  # 5. Install and hold kubelet, kubeadm, kubectl, and cri-tools
-  - apt-get update
-  - DEBIAN_FRONTEND=noninteractive apt-get install -y kubelet kubeadm kubectl cri-tools
-  - apt-mark hold kubelet kubeadm kubectl cri-tools
+  # 5. Ensure kubelet is enabled
   - systemctl daemon-reload
   - systemctl enable --now kubelet
 

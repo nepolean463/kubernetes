@@ -2,7 +2,7 @@
 # 1. Disable swap
 - name: Disable swap immediately
   ansible.builtin.command: swapoff -a
-  when: ansible_swaptotal_mb > 0
+  when: ansible_facts['swaptotal_mb'] | default(0) > 0
   changed_when: true
 
 - name: Remove swap entry from /etc/fstab
@@ -167,6 +167,7 @@
     src: "{{ playbook_dir }}/../image-cache/ceph-images.tar"
     dest: /tmp/ceph-images.tar
     mode: '0644'
+  become: false
   when:
     - image_cache_file.stat.exists
     - inventory_hostname in (groups['storage'] | default([]) + groups['workers'] | default([]))

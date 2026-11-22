@@ -181,3 +181,9 @@ Docker is used on the host to execute `./scripts/download-image-cache.sh`. This 
 sudo apt install -y docker.io
 sudo usermod -aG docker $USER
 ```
+
+### F. Install QEMU Utilities & Cloud Guest Utils (for Golden Image Builder)
+Required by `./scripts/build-golden-image.sh` to mount images via NBD, grow partitions, and build offline golden images:
+```bash
+sudo apt install -y qemu-utils cloud-guest-utils
+```

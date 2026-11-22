@@ -206,12 +206,13 @@ ansible-playbook -i inventory.ini site.yml
 ```
 
 ### What the Playbook Executes:
-1. **Play 0 (Pre-flight):** Automatically waits for SSH and waits for `cloud-init status --wait` to ensure all user creation and sudo permissions are active.
-2. **Play 1 (Common):** Configures kernel modules (`overlay`, `br_netfilter`), sets sysctls, disables swap persistently, installs `containerd` with `SystemdCgroup = true`, and sets up the Kubernetes v1.35 APT repository.
-3. **Play 2 (Control Plane):** Executes `kubeadm init --pod-network-cidr=10.244.0.0/16`, configures `/home/ubuntu/.kube/config`, deploys Flannel CNI, and pulls the cluster admin kubeconfig to the host.
-4. **Play 3 (Workers):** Dynamically retrieves a join token from the control plane and joins worker nodes.
-5. **Play 4 (Verification):** Polls node readiness until all 3 nodes report `Ready`.
+1. **Play 0 (Pre-flight):** Automatically waits for SSH and waits for `cloud-init status --wait` to ensure all user creation and cloud-init bootstrap is complete.
+2. **Play 1 (Common):** Pre-caches Ceph container images from `image-cache/ceph-images.tar` into `containerd` on storage/worker nodes, verifies kernel modules (`overlay`, `br_netfilter`, `rbd`), sets sysctls, and disables swap persistently.
+3. **Play 2 (Control Plane):** Executes `kubeadm init --pod-network-cidr=10.244.0.0/16`, configures `/home/ubuntu/.kube/config`, deploys Calico CNI, and pulls the cluster admin kubeconfig to the host.
+4. **Play 3 (Workers & Storage):** Dynamically retrieves a join token from the control plane and joins worker and storage nodes in parallel.
+5. **Play 4 (Verification):** Polls node readiness until all 6 nodes report `Ready`.
 6. **Play 5 (Addons - MetalLB & Dashboard):** Configures `strictARP: true` in kube-proxy, deploys MetalLB operator, creates the LAN IP pool (`192.168.1.220-230`), deploys the Kubernetes Dashboard as a LoadBalancer on port `443`, and prints the access URL (`https://192.168.1.220`) and admin token directly in the terminal!
+7. **Play 6 (Rook-Ceph Distributed Storage):** Deploys Rook CRDs, Common RBAC, Operator, CephCluster (`3 MONs`, `3 OSDs` on raw `/dev/vdb`), Ceph Block Pool with dynamic `rook-ceph-block (default)` StorageClass, and Ceph toolbox pod.
 
 ---
 
@@ -252,11 +253,88 @@ kubectl delete svc nginx-svc
 kubectl delete deployment nginx-test
 ```
 
+### C. Ceph Distributed Storage Verification & Dynamic PVC Smoke Test
+```bash
+# 1. Verify Ceph health & OSD status
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd tree
+
+# 2. Verify StorageClass is registered as default
+kubectl get storageclass
+
+# 3. Create a dynamic test PVC and mount to a pod
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ceph-smoke-test-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: rook-ceph-block
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ceph-smoke-test-pod
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo 'Ceph storage works!' > /mnt/data/test.txt && sleep 3600"]
+    volumeMounts:
+    - mountPath: /mnt/data
+      name: test-vol
+  volumes:
+  - name: test-vol
+    persistentVolumeClaim:
+      claimName: ceph-smoke-test-pvc
+EOF
+
+# 4. Verify PVC bound and Pod Running
+kubectl get pvc ceph-smoke-test-pvc
+kubectl get pod ceph-smoke-test-pod
+
+# 5. Clean up smoke test resources
+kubectl delete pod ceph-smoke-test-pod
+kubectl delete pvc ceph-smoke-test-pvc
+```
+
 ---
 
-## 7. Phase 6: Operational Runbook & Maintenance
+## 7. Phase 6: Operational Runbook, Maintenance & Ceph Troubleshooting
 
-### Adding a New Worker Node
+### Ceph Storage Operations
+
+#### 1. Tuning Monitor Available Space Warning for Virtual Labs
+By default, Ceph monitors alert if host root disk free space is below 15 GiB (`mon_data_avail_warn`). On small lab VMs with 10 GiB root disks, tune this threshold to 10% to achieve pristine `HEALTH_OK`:
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set mon mon_data_avail_warn 10
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph config set global mon_data_avail_warn 10
+```
+
+#### 2. Resolving OSD Memory Pressure on 2 GiB Storage Nodes
+If a storage node hosts a MON, MGR, and OSD simultaneously, default Rook requests can exceed 2 GiB allocatable RAM. In `manifests/ceph/cluster.yaml`, ensure requests are scaled for lab environments:
+- MON: `requests.memory: 256Mi`
+- MGR: `requests.memory: 256Mi`
+- OSD: `requests.memory: 512Mi`
+
+#### 3. Clearing Lingering Mon Canary Pods
+If Rook's node-validation canary pod lingers in `Terminating`, Kubernetes podAntiAffinity will block the monitor daemon from scheduling on that node. Force-delete the canary to unblock:
+```bash
+kubectl -n rook-ceph delete pod <mon-canary-pod-name> --force --grace-period=0
+```
+
+#### 4. Ceph Toolbox Configuration Generation
+The toolbox pod dynamically mounts endpoints from the `rook-ceph-mon-endpoints` ConfigMap and credentials from the `rook-ceph-mon` secret. It automatically writes `/etc/ceph/ceph.conf` and `/etc/ceph/keyring` on boot. If the pod starts before MONs establish quorum, rollout restart it once MONs are ready:
+```bash
+kubectl -n rook-ceph rollout restart deploy/rook-ceph-tools
+```
+
+### Adding a New Worker or Storage Node
 1. Edit `variables.tf` (or `terraform.tfvars`) and add an entry under `workers`:
    ```hcl
    "k8s-worker-3" = {
@@ -288,29 +366,27 @@ virsh start k8s-worker-2
 
 ## 8. Phase 7: Teardown & Clean Rebuild Procedure
 
-### Fast Rebuild (Preserves Base Image Cache):
+### Fast Rebuild (Using Golden Image & Offline Ceph Cache):
 ```bash
 cd ~/k8s-terraform
 
-# 1. Destroy VMs and root disks
-terraform destroy -auto-approve
+# 1. Build Golden Base Image once (if not already built)
+./scripts/build-golden-image.sh
 
-# 2. Clear old SSH keys and host kubeconfig
-ssh-keygen -R 192.168.1.210 2>/dev/null
-ssh-keygen -R 192.168.1.211 2>/dev/null
-ssh-keygen -R 192.168.1.212 2>/dev/null
-ssh-keygen -R 192.168.1.215 2>/dev/null
-ssh-keygen -R 192.168.1.216 2>/dev/null
-ssh-keygen -R 192.168.1.217 2>/dev/null
-rm -f kubeconfig ~/.kube/config
-
-# 3. (Optional) Ensure offline Ceph image cache is populated
+# 2. Pre-cache Ceph container images on host once (if not already downloaded)
 ./scripts/download-image-cache.sh
 
-# 4. Re-create VMs
+# 3. Destroy active VMs
+terraform destroy -auto-approve
+
+# 4. Clear old SSH keys and host kubeconfig
+for ip in 210 211 212 215 216 217; do ssh-keygen -R "192.168.1.${ip}" 2>/dev/null; done
+rm -f kubeconfig ~/.kube/config
+
+# 5. Re-create VMs (cloud-init finishes in ~5s with 0 MB internet downloads)
 terraform apply -auto-approve
 
-# 5. Re-run bootstrap
+# 6. Re-run bootstrap
 cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
 ```
 

@@ -108,7 +108,7 @@
 
     - name: Wait for MetalLB controller deployment to be ready
       ansible.builtin.command: >
-        kubectl rollout status deployment/controller -n metallb-system --timeout=120s
+        kubectl rollout status deployment/controller -n metallb-system --timeout=300s
       environment:
         KUBECONFIG: /home/ubuntu/.kube/config
       changed_when: false
@@ -145,7 +145,7 @@
 
     - name: Wait for Kubernetes Dashboard deployment to be ready
       ansible.builtin.command: >
-        kubectl rollout status deployment/kubernetes-dashboard -n kubernetes-dashboard --timeout=120s
+        kubectl rollout status deployment/kubernetes-dashboard -n kubernetes-dashboard --timeout=300s
       environment:
         KUBECONFIG: /home/ubuntu/.kube/config
       changed_when: false

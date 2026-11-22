@@ -23,9 +23,43 @@ spec:
             - /bin/bash
             - -c
             - |
-              # Replicate the script from the official Rook toolbox
+              # Set up /etc/ceph/ceph.conf and /etc/ceph/keyring
+              CEPH_CONFIG="/etc/ceph/ceph.conf"
+              KEYRING_FILE="/etc/ceph/keyring"
+
+              while [ ! -s /etc/rook/mon-endpoints ]; do
+                echo "Waiting for mon endpoints..."
+                sleep 2
+              done
+
+              mon_endpoints=$(sed -e 's/.*=//' /etc/rook/mon-endpoints | tr '\n' ',' | sed -e 's/,$//')
+
+              cat << EOF > ${CEPH_CONFIG}
+              [global]
+              mon_host = ${mon_endpoints}
+              EOF
+
+              if [ -n "$ROOK_CEPH_SECRET" ]; then
+                cat << EOF > ${KEYRING_FILE}
+              [${ROOK_CEPH_USERNAME:-client.admin}]
+              key = ${ROOK_CEPH_SECRET}
+              EOF
+                chmod 0600 ${KEYRING_FILE}
+              fi
+
               echo "Ceph toolbox is ready. Run ceph commands here."
               sleep infinity
+          env:
+            - name: ROOK_CEPH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-mon
+                  key: ceph-username
+            - name: ROOK_CEPH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rook-ceph-mon
+                  key: ceph-secret
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - mountPath: /etc/ceph

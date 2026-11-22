@@ -36,19 +36,19 @@ spec:
         memory: "1024Mi"
       requests:
         cpu: "100m"
-        memory: "512Mi"
+        memory: "256Mi"
     mon:
       limits:
         memory: "1024Mi"
       requests:
         cpu: "100m"
-        memory: "512Mi"
+        memory: "256Mi"
     osd:
       limits:
         memory: "1536Mi"
       requests:
         cpu: "200m"
-        memory: "1024Mi"
+        memory: "512Mi"
   storage:
     useAllNodes: false
     useAllDevices: false
