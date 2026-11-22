@@ -289,6 +289,24 @@ This saves `image-cache/ceph-images.tar` on your host. Ansible automatically det
 
 ---
 
+## 💤 Daily Mini PC Operations (Shutdown & Startup)
+
+If you turn off your physical host/Mini PC daily, use these automated scripts to prevent Ceph and etcd data corruption:
+
+### Daily Shutdown (Before powering off your host):
+```bash
+./scripts/cluster-shutdown.sh
+```
+*Safely freezes Ceph (`noout`), stops workers, flushes storage OSDs, and shuts down control-plane last.*
+
+### Daily Startup (After powering on your host):
+```bash
+./scripts/cluster-startup.sh
+```
+*Starts control-plane, waits for API server, boots storage nodes, boots workers, unfreezes Ceph, and verifies cluster health.*
+
+---
+
 ## 🔄 Teardown & Clean Rebuild
 
 ```bash

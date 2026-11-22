@@ -347,20 +347,29 @@ kubectl -n rook-ceph rollout restart deploy/rook-ceph-tools
 3. Add `k8s-worker-3 ansible_host=192.168.1.213` to `ansible/inventory.ini`.
 4. Run `ansible-playbook -i inventory.ini site.yml`.
 
-### Restarting / Powering Off Cluster
-To safely shut down the cluster:
-```bash
-virsh shutdown k8s-worker-1
-virsh shutdown k8s-worker-2
-virsh shutdown k8s-cp-1
-```
+### Daily Cluster Shutdown & Startup (Mini PC Lab)
 
-To power on the cluster:
+#### Safe Shutdown Before Powering Off Mini PC:
+To prevent etcd and Ceph disk corruption, shut down the cluster in the proper sequence using the automated script:
 ```bash
-virsh start k8s-cp-1
-virsh start k8s-worker-1
-virsh start k8s-worker-2
+./scripts/cluster-shutdown.sh
 ```
+*Sequence:*
+1. Sets Ceph `noout` flag to freeze placement groups and avoid rebalancing storms.
+2. Gracefully sends ACPI shutdown to workers (`k8s-worker-1..2`) to stop workloads.
+3. Gracefully sends ACPI shutdown to storage nodes (`k8s-storage-1..3`) to flush OSD journals.
+4. Gracefully shuts down the control plane (`k8s-cp-1`) last.
+
+#### Safe Startup After Powering On Mini PC:
+Once the host boots, bring the cluster online in order:
+```bash
+./scripts/cluster-startup.sh
+```
+*Sequence:*
+1. Starts `k8s-cp-1` and waits for `kube-apiserver` to respond.
+2. Starts storage nodes (`k8s-storage-1..3`) and waits for Ceph quorum.
+3. Starts worker nodes (`k8s-worker-1..2`).
+4. Automatically unsets Ceph `noout` flag and prints node readiness and Ceph health.
 
 ---
 
