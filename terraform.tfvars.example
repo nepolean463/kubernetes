@@ -10,8 +10,9 @@ ssh_public_key      = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@hostname"
 # Existing Linux bridge interface on the host attached to your LAN
 host_bridge         = "bridge0"
 
-# Libvirt virtual network name
-network_name        = "k8s-lan-bridge"
+# Libvirt virtual network names
+network_name          = "k8s-lan-bridge"
+internal_network_name = "k8s-internal"
 
 # Default LAN Gateway and DNS resolvers
 gateway             = "192.168.1.1"
