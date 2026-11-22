@@ -7,6 +7,8 @@ k8s-worker-2 ansible_host=192.168.1.212 internal_ip=10.240.0.12
 
 [storage]
 k8s-storage-1 ansible_host=192.168.1.215 internal_ip=10.240.0.15
+k8s-storage-2 ansible_host=192.168.1.216 internal_ip=10.240.0.16
+k8s-storage-3 ansible_host=192.168.1.217 internal_ip=10.240.0.17
 
 [k8s_cluster:children]
 control_plane

@@ -79,8 +79,8 @@ variable "control_plane" {
   default = {
     name             = "k8s-cp-1"
     vcpu             = 2
-    memory           = 4096
-    disk_size        = 21474836480 # 20 GiB in bytes
+    memory           = 3072
+    disk_size        = 10737418240 # 10 GiB in bytes
     ip_cidr          = "192.168.1.210/24"
     mac_address      = "52:54:00:10:01:10"
     internal_ip_cidr = "10.240.0.10/24"
@@ -102,8 +102,8 @@ variable "workers" {
   default = {
     "k8s-worker-1" = {
       vcpu             = 2
-      memory           = 2048
-      disk_size        = 21474836480 # 20 GiB in bytes
+      memory           = 1536
+      disk_size        = 10737418240 # 10 GiB in bytes
       ip_cidr          = "192.168.1.211/24"
       mac_address      = "52:54:00:10:01:11"
       internal_ip_cidr = "10.240.0.11/24"
@@ -111,8 +111,8 @@ variable "workers" {
     }
     "k8s-worker-2" = {
       vcpu             = 2
-      memory           = 2048
-      disk_size        = 21474836480 # 20 GiB in bytes
+      memory           = 1536
+      disk_size        = 10737418240 # 10 GiB in bytes
       ip_cidr          = "192.168.1.212/24"
       mac_address      = "52:54:00:10:01:12"
       internal_ip_cidr = "10.240.0.12/24"
@@ -136,13 +136,33 @@ variable "storage_nodes" {
   default = {
     "k8s-storage-1" = {
       vcpu             = 2
-      memory           = 3072          # 3 GiB RAM for Ceph OSD & Mon
-      disk_size        = 21474836480   # 20 GiB root disk
-      extra_disk_size  = 16106127360   # 15 GiB raw Ceph OSD disk (15 * 1024^3)
+      memory           = 2048          # 2 GiB RAM for Ceph OSD & Mon
+      disk_size        = 10737418240   # 10 GiB root disk
+      extra_disk_size  = 5368709120    # 5 GiB raw Ceph OSD disk (BlueStore minimum)
       ip_cidr          = "192.168.1.215/24"
       mac_address      = "52:54:00:10:01:15"
       internal_ip_cidr = "10.240.0.15/24"
       internal_mac     = "52:54:00:20:01:15"
+    }
+    "k8s-storage-2" = {
+      vcpu             = 2
+      memory           = 2048          # 2 GiB RAM for Ceph OSD & Mon
+      disk_size        = 10737418240   # 10 GiB root disk
+      extra_disk_size  = 5368709120    # 5 GiB raw Ceph OSD disk (BlueStore minimum)
+      ip_cidr          = "192.168.1.216/24"
+      mac_address      = "52:54:00:10:01:16"
+      internal_ip_cidr = "10.240.0.16/24"
+      internal_mac     = "52:54:00:20:01:16"
+    }
+    "k8s-storage-3" = {
+      vcpu             = 2
+      memory           = 2048          # 2 GiB RAM for Ceph OSD & Mon
+      disk_size        = 10737418240   # 10 GiB root disk
+      extra_disk_size  = 5368709120    # 5 GiB raw Ceph OSD disk (BlueStore minimum)
+      ip_cidr          = "192.168.1.217/24"
+      mac_address      = "52:54:00:10:01:17"
+      internal_ip_cidr = "10.240.0.17/24"
+      internal_mac     = "52:54:00:20:01:17"
     }
   }
 }

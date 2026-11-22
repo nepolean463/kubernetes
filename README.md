@@ -1,9 +1,9 @@
 # Local Kubernetes Cluster on KVM/libvirt (Dual-NIC with Ceph Storage)
 
-A modular, production-standard Infrastructure-as-Code (Terraform) and Configuration Management (Ansible) project to provision and bootstrap a 4-node Kubernetes cluster (`v1.35`) with **Dual-NIC separation** and **Dedicated Rook-Ceph Distributed Storage**:
+A modular, production-standard Infrastructure-as-Code (Terraform) and Configuration Management (Ansible) project to provision and bootstrap a 6-node Kubernetes cluster (`v1.35`) with **Dual-NIC separation** and **3 Dedicated Rook-Ceph Distributed Storage Nodes**:
 - **External Network (`lan0`):** Attached directly to physical host `bridge0` (`192.168.1.0/24`) for LAN access, SSH, internet routing, and MetalLB LoadBalancer VIPs (`192.168.1.220`).
 - **Internal Network (`internal0`):** Attached to an isolated KVM-managed virtual network (`10.240.0.0/24`) dedicated to intra-cluster Kubernetes traffic (`kubelet --node-ip`, `kube-apiserver --advertise-address`, etcd, Flannel CNI overlay, and Ceph storage replication).
-- **Dedicated Storage Node (`k8s-storage-1`):** Equipped with a secondary raw 15 GiB block device (`/dev/vdb`) orchestrated by **Rook-Ceph** providing dynamic Ceph Block Storage (RBD) Persistent Volumes.
+- **Dedicated Storage Nodes (`k8s-storage-1..3`):** 3 storage nodes equipped with secondary raw 5 GiB block devices (`/dev/vdb`) orchestrated by **Rook-Ceph** providing 3-replica quorum and dynamic Ceph Block Storage (RBD) Persistent Volumes.
 
 ---
 
@@ -95,7 +95,7 @@ This repository provides three complete deployment architectures managed via Git
 | :--- | :--- | :--- | :--- |
 | **Single-NIC** | `main` | 3 Nodes on single `bridge0` (`192.168.1.0/24`). | Simplicity, home labs, flat network setups. |
 | **Dual-NIC** | `dual-nic` | 3 Nodes with `lan0` (`192.168.1.0/24`) + `internal0` (`10.240.0.0/24`). | Production realism, control plane network isolation. |
-| **Dual-NIC + Ceph** | `dual-nic-ceph` (active) | 4 Nodes (adds `k8s-storage-1` with 15 GiB raw OSD disk) + **Rook-Ceph** distributed block storage. | Distributed enterprise storage, stateful workloads with dynamic PVCs. |
+| **Dual-NIC + Ceph** | `dual-nic-ceph` (active) | 6 Nodes (1 CP, 2 Workers, 3 Storage nodes with 5 GiB raw OSD disks) + **Rook-Ceph** 3-replica distributed block storage. | Distributed enterprise storage, stateful workloads with dynamic PVCs. |
 
 ### Switching Between Architectures
 
@@ -208,8 +208,10 @@ ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.211
 # Worker 2
 ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.212
 
-# Storage Node
-ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.215
+# Storage Nodes (Ceph OSDs)
+ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.215  # k8s-storage-1
+ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.216  # k8s-storage-2
+ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.217  # k8s-storage-3
 ```
 
 ---

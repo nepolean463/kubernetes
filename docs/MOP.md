@@ -13,22 +13,30 @@ This document is the operational Method of Procedure (MOP) for provisioning, con
   - Control Plane: `k8s-cp-1`
     - External LAN (`lan0`): `192.168.1.210/24` (Gateway: `192.168.1.1`, SSH, MetalLB, Web)
     - Internal KVM (`internal0`): `10.240.0.10/24` (No Gateway, etcd, apiserver, Flannel)
-    - Resources: 2 vCPU, 4096 MiB RAM, 20 GiB disk
+    - Resources: 2 vCPU, 3072 MiB RAM, 10 GiB disk
   - Worker 1: `k8s-worker-1`
     - External LAN (`lan0`): `192.168.1.211/24` (Gateway: `192.168.1.1`, SSH, MetalLB, Web)
     - Internal KVM (`internal0`): `10.240.0.11/24` (No Gateway, Flannel)
-    - Resources: 2 vCPU, 2048 MiB RAM, 20 GiB disk
+    - Resources: 2 vCPU, 1536 MiB RAM, 10 GiB disk
   - Worker 2: `k8s-worker-2`
     - External LAN (`lan0`): `192.168.1.212/24` (Gateway: `192.168.1.1`, SSH, MetalLB, Web)
     - Internal KVM (`internal0`): `10.240.0.12/24` (No Gateway, Flannel)
-    - Resources: 2 vCPU, 2048 MiB RAM, 20 GiB disk
+    - Resources: 2 vCPU, 1536 MiB RAM, 10 GiB disk
   - Storage Node 1: `k8s-storage-1`
     - External LAN (`lan0`): `192.168.1.215/24` (Gateway: `192.168.1.1`, SSH)
     - Internal KVM (`internal0`): `10.240.0.15/24` (No Gateway, Flannel, Ceph OSD replication)
-    - Resources: 2 vCPU, 3072 MiB RAM, 20 GiB root disk (`/dev/vda`) + 15 GiB raw Ceph OSD disk (`/dev/vdb`)
+    - Resources: 2 vCPU, 2048 MiB RAM, 10 GiB root disk (`/dev/vda`) + 5 GiB raw Ceph OSD disk (`/dev/vdb`)
+  - Storage Node 2: `k8s-storage-2`
+    - External LAN (`lan0`): `192.168.1.216/24` (Gateway: `192.168.1.1`, SSH)
+    - Internal KVM (`internal0`): `10.240.0.16/24` (No Gateway, Flannel, Ceph OSD replication)
+    - Resources: 2 vCPU, 2048 MiB RAM, 10 GiB root disk (`/dev/vda`) + 5 GiB raw Ceph OSD disk (`/dev/vdb`)
+  - Storage Node 3: `k8s-storage-3`
+    - External LAN (`lan0`): `192.168.1.217/24` (Gateway: `192.168.1.1`, SSH)
+    - Internal KVM (`internal0`): `10.240.0.17/24` (No Gateway, Flannel, Ceph OSD replication)
+    - Resources: 2 vCPU, 2048 MiB RAM, 10 GiB root disk (`/dev/vda`) + 5 GiB raw Ceph OSD disk (`/dev/vdb`)
 - **Pod Network CIDR:** `10.244.0.0/16` (Flannel CNI bound to `--iface-regex=10.240.0.*`)
 - **MetalLB LoadBalancer Pool:** `192.168.1.220 - 192.168.1.230` (Layer 2 announced on `lan0`)
-- **Ceph StorageClass:** `rook-ceph-block` (RBD dynamic PVC provisioning)
+- **Ceph StorageClass:** `rook-ceph-block` (RBD dynamic 3-replica PVC provisioning)
 - **Kubernetes Version:** `v1.35.10`
 
 ---
