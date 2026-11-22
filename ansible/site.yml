@@ -54,8 +54,16 @@
       delay: 5
       changed_when: false
 
+    - name: Label nodes with external LAN IP for visibility
+      ansible.builtin.command: >
+        kubectl label node {{ item }} node.kubernetes.io/external-ip={{ hostvars[item]['ansible_host'] }} --overwrite
+      loop: "{{ groups['k8s_cluster'] }}"
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      changed_when: false
+
     - name: Display Cluster Nodes Overview
-      ansible.builtin.command: kubectl get nodes -o wide
+      ansible.builtin.command: kubectl get nodes -L node.kubernetes.io/external-ip -o wide
       environment:
         KUBECONFIG: /home/ubuntu/.kube/config
       register: final_nodes

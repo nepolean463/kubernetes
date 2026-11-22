@@ -142,12 +142,25 @@ The **Kubernetes Dashboard** is exposed via MetalLB on standard HTTPS port `443`
 ```bash
 export KUBECONFIG=~/k8s-terraform/kubeconfig
 
-kubectl get nodes -o wide
-kubectl get pods -A
+# Query nodes with the external LAN IP label column
+kubectl get nodes -L node.kubernetes.io/external-ip -o wide
 ```
 
-Notice that `kubectl get nodes -o wide` displays:
-- **INTERNAL-IP:** `10.240.0.10`, `10.240.0.11`, `10.240.0.12` (Internal KVM network)
+Output:
+```
+NAME           STATUS   ROLES           AGE   VERSION    INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION      CONTAINER-RUNTIME    EXTERNAL-IP
+k8s-cp-1       Ready    control-plane   28m   v1.35.10   10.240.0.10   <none>        Ubuntu 24.04.5 LTS   6.8.0-147-generic   containerd://2.2.1   192.168.1.210
+k8s-worker-1   Ready    <none>          28m   v1.35.10   10.240.0.11   <none>        Ubuntu 24.04.5 LTS   6.8.0-147-generic   containerd://2.2.1   192.168.1.211
+k8s-worker-2   Ready    <none>          28m   v1.35.10   10.240.0.12   <none>        Ubuntu 24.04.5 LTS   6.8.0-147-generic   containerd://2.2.1   192.168.1.212
+```
+
+#### 💡 Deep Dive: Why is `EXTERNAL-IP` `<none>` in `kubectl get nodes`?
+- **Kubelet Status Reconciler:** In Kubernetes, `kubelet` regularly registers its node status with the API server. In bare-metal clusters (without a Cloud Controller Manager), `kubelet` only populates `InternalIP` (set via `--node-ip=10.240.0.1x`) and `Hostname`.
+- **Cloud Controller Reservation:** In upstream Kubernetes architecture, `EXTERNAL-IP` is strictly populated by cloud providers (AWS, GCP, Azure) via a Cloud Controller Manager (CCM). On bare-metal and on-prem clusters, **`EXTERNAL-IP: <none>` is standard, expected, and correct behavior**.
+- **Dual-Stack Limitation:** Kubelet's `--node-ip` parameter only allows either a single IP or an IPv4+IPv6 dual-stack pair; it explicitly rejects two IPv4 addresses. Furthermore, manually patching `.status.addresses` creates a fight with kubelet's 10-second heartbeat sync, which resets the address list.
+- **Production Solution:**
+  1. **Workload Ingress:** External access is handled natively at the Service layer by **MetalLB** announcing IP pool `192.168.1.220-230` over `lan0` via Layer 2 ARP, and by NodePort services reachable on the LAN.
+  2. **Node Visibility:** Node LAN IPs are permanently tracked using standard Kubernetes labels (`node.kubernetes.io/external-ip`), visible via `-L node.kubernetes.io/external-ip`.
 
 ### Node SSH Access
 

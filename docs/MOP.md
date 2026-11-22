@@ -7,14 +7,66 @@ This document is the operational Method of Procedure (MOP) for provisioning, con
 
 ## 1. Document Overview
 
-- **Project:** `k8s-terraform`
-- **Environment:** Local Ubuntu KVM/libvirt Host (Bridged LAN: `192.168.1.0/24`)
+- **Project:** `k8s-terraform` (Branch: `dual-nic`)
+- **Environment:** Local Ubuntu KVM/libvirt Host (Dual-NIC: Physical Bridge LAN + Isolated KVM Network)
 - **Node Allocations:**
-  - Control Plane: `k8s-cp-1` (`192.168.1.210`) - 2 vCPU, 4096 MiB RAM, 20 GiB disk
-  - Worker 1: `k8s-worker-1` (`192.168.1.211`) - 2 vCPU, 2048 MiB RAM, 20 GiB disk
-  - Worker 2: `k8s-worker-2` (`192.168.1.212`) - 2 vCPU, 2048 MiB RAM, 20 GiB disk
-- **Pod Network CIDR:** `10.244.0.0/16` (Flannel CNI)
+  - Control Plane: `k8s-cp-1`
+    - External LAN (`lan0`): `192.168.1.210/24` (Gateway: `192.168.1.1`, SSH, MetalLB, Web)
+    - Internal KVM (`internal0`): `10.240.0.10/24` (No Gateway, etcd, apiserver, Flannel)
+    - Resources: 2 vCPU, 4096 MiB RAM, 20 GiB disk
+  - Worker 1: `k8s-worker-1`
+    - External LAN (`lan0`): `192.168.1.211/24` (Gateway: `192.168.1.1`, SSH, MetalLB, Web)
+    - Internal KVM (`internal0`): `10.240.0.11/24` (No Gateway, Flannel)
+    - Resources: 2 vCPU, 2048 MiB RAM, 20 GiB disk
+  - Worker 2: `k8s-worker-2`
+    - External LAN (`lan0`): `192.168.1.212/24` (Gateway: `192.168.1.1`, SSH, MetalLB, Web)
+    - Internal KVM (`internal0`): `10.240.0.12/24` (No Gateway, Flannel)
+    - Resources: 2 vCPU, 2048 MiB RAM, 20 GiB disk
+- **Pod Network CIDR:** `10.244.0.0/16` (Flannel CNI bound to `--iface-regex=10.240.0.*`)
+- **MetalLB LoadBalancer Pool:** `192.168.1.220 - 192.168.1.230` (Layer 2 announced on `lan0`)
 - **Kubernetes Version:** `v1.35.10`
+
+---
+
+## 1.1. Dual-NIC Architecture & Node Address Design
+
+### A. Network Separation & Routing
+Each VM has two network interfaces attached:
+1. **`lan0` (External Physical Bridge `bridge0`):**
+   - Configured with static IP in `192.168.1.0/24`.
+   - Contains the **only default gateway** (`192.168.1.1`) and DNS resolvers.
+   - Used for host SSH management, Ansible automation, outbound internet access (package installs, container image pulls), and MetalLB LoadBalancer service VIPs.
+2. **`internal0` (Internal KVM Virtual Network `virbr1`):**
+   - Configured with static IP in `10.240.0.0/24`.
+   - **Crucial:** **No default gateway** is assigned to prevent asymmetric routing conflicts.
+   - Dedicated exclusively to Kubernetes cluster-internal control and data traffic:
+     - `kubelet` registers with `--node-ip=10.240.0.1x`.
+     - `kube-apiserver` binds and advertises on `--apiserver-advertise-address=10.240.0.10` (with `192.168.1.210` included in TLS SANs).
+     - `etcd` peer and client traffic runs exclusively on `10.240.0.10`.
+     - Flannel CNI encapsulates pod overlay traffic across the `10.240.0.x` interface.
+
+### B. Understanding `INTERNAL-IP` vs `EXTERNAL-IP` in `kubectl get nodes`
+When querying nodes with `kubectl get nodes -o wide`:
+```
+NAME           STATUS   ROLES           AGE   VERSION    INTERNAL-IP   EXTERNAL-IP   ...
+k8s-cp-1       Ready    control-plane   25m   v1.35.10   10.240.0.10   <none>        ...
+k8s-worker-1   Ready    <none>          25m   v1.35.10   10.240.0.11   <none>        ...
+k8s-worker-2   Ready    <none>          25m   v1.35.10   10.240.0.12   <none>        ...
+```
+
+1. **Why `INTERNAL-IP` shows `10.240.0.1x`:**
+   - In bare-metal clusters, `kubelet` discovers or is instructed via `--node-ip` which IP to report as `InternalIP`. By specifying `KUBELET_EXTRA_ARGS="--node-ip=10.240.0.1x"`, all intra-cluster pod-to-pod and node-to-node routing is locked to the high-speed isolated KVM internal bridge.
+2. **Why `EXTERNAL-IP` shows `<none>`:**
+   - In upstream Kubernetes, the `ExternalIP` field on nodes is **specifically reserved for Cloud Controller Managers (CCM)** (e.g., AWS, GCP, Azure, OpenStack).
+   - `kubelet`'s `--node-ip` flag only accepts a single IP or a dual-stack IPv4/IPv6 pair (e.g. `10.240.0.10,2001:db8::1`). Passing two IPv4 addresses causes kubelet to fail on startup.
+   - Without an external cloud provider, `kubelet` is the sole authority over `status.addresses`. Kubelet periodically runs a heartbeat sync (every 10s) and overwrites the node address list with `[InternalIP, Hostname]`. Any third-party attempts to patch `ExternalIP` directly into `status.addresses` trigger continuous reconciliation loops and etcd churn.
+   - Therefore, in bare-metal and on-prem Kubernetes, **`EXTERNAL-IP: <none>` is the standard, expected, and correct behavior**.
+3. **How External Node IPs and Services are Handled:**
+   - **Service Access (MetalLB):** User traffic from the LAN does not target individual node internal IPs; it targets MetalLB LoadBalancer VIPs (e.g. `https://192.168.1.220`), which MetalLB announces on `lan0` using Layer 2 ARP.
+   - **Node Visibility (Labels):** To inspect and track external LAN IPs on node objects without reconciliation conflicts, the playbook labels each node with `node.kubernetes.io/external-ip`:
+     ```bash
+     kubectl get nodes -L node.kubernetes.io/external-ip -o wide
+     ```
 
 ---
 
@@ -118,7 +170,7 @@ ansible-playbook -i inventory.ini site.yml
 ```bash
 export KUBECONFIG=~/k8s-terraform/kubeconfig
 
-kubectl get nodes -o wide
+kubectl get nodes -L node.kubernetes.io/external-ip -o wide
 kubectl get pods -A
 ```
 
