@@ -1,0 +1,71 @@
+---
+- name: Deploy Rook-Ceph Distributed Storage Cluster
+  hosts: control_plane
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Create manifests directory on control plane
+      ansible.builtin.file:
+        path: /home/ubuntu/manifests/ceph
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copy Rook-Ceph manifests to control plane
+      ansible.builtin.copy:
+        src: ../manifests/ceph/
+        dest: /home/ubuntu/manifests/ceph/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Deploy Rook-Ceph CRDs, Common RBAC, and Operator
+      ansible.builtin.command: kubectl apply -f /home/ubuntu/manifests/ceph/{{ item }}
+      loop:
+        - crds.yaml
+        - common.yaml
+        - operator.yaml
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: rook_operator
+      changed_when: "'created' in rook_operator.stdout or 'configured' in rook_operator.stdout"
+
+    - name: Wait for Rook-Ceph Operator to reach Ready status
+      ansible.builtin.command: >
+        kubectl rollout status deployment/rook-ceph-operator -n rook-ceph --timeout=300s
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      changed_when: false
+
+    - name: Deploy CephCluster on dedicated storage node
+      ansible.builtin.command: kubectl apply -f /home/ubuntu/manifests/ceph/cluster.yaml
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: ceph_cluster
+      changed_when: "'created' in ceph_cluster.stdout"
+
+    - name: Deploy Ceph Block Pool and StorageClass
+      ansible.builtin.command: kubectl apply -f /home/ubuntu/manifests/ceph/pool-block.yaml
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: ceph_pool
+      changed_when: "'created' in ceph_pool.stdout"
+
+    - name: Deploy Rook-Ceph Toolbox pod for cluster inspection
+      ansible.builtin.command: kubectl apply -f /home/ubuntu/manifests/ceph/toolbox.yaml
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      register: ceph_toolbox
+      changed_when: "'created' in ceph_toolbox.stdout"
+
+    - name: Output Rook-Ceph Status Instructions
+      ansible.builtin.debug:
+        msg:
+          - "=========================================================="
+          - "📦 ROOK-CEPH STORAGE CLUSTER INITIATED!"
+          - "Storage Node:  k8s-storage-1 (/dev/vdb 15 GiB raw OSD)"
+          - "StorageClass:  rook-ceph-block (default)"
+          - "To check Ceph health:"
+          - "  kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status"
+          - "=========================================================="

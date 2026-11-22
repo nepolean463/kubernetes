@@ -1,42 +1,44 @@
-# Local Kubernetes Cluster on KVM/libvirt (Dual-NIC Architecture)
+# Local Kubernetes Cluster on KVM/libvirt (Dual-NIC with Ceph Storage)
 
-A modular, production-standard Infrastructure-as-Code (Terraform) and Configuration Management (Ansible) project to provision and bootstrap a 3-node Kubernetes cluster (`v1.35`) with **Dual-NIC separation**:
+A modular, production-standard Infrastructure-as-Code (Terraform) and Configuration Management (Ansible) project to provision and bootstrap a 4-node Kubernetes cluster (`v1.35`) with **Dual-NIC separation** and **Dedicated Rook-Ceph Distributed Storage**:
 - **External Network (`lan0`):** Attached directly to physical host `bridge0` (`192.168.1.0/24`) for LAN access, SSH, internet routing, and MetalLB LoadBalancer VIPs (`192.168.1.220`).
-- **Internal Network (`internal0`):** Attached to an isolated KVM-managed virtual network (`10.240.0.0/24`) dedicated to intra-cluster Kubernetes traffic (`kubelet --node-ip`, `kube-apiserver --advertise-address`, etcd, and Flannel CNI overlay).
+- **Internal Network (`internal0`):** Attached to an isolated KVM-managed virtual network (`10.240.0.0/24`) dedicated to intra-cluster Kubernetes traffic (`kubelet --node-ip`, `kube-apiserver --advertise-address`, etcd, Flannel CNI overlay, and Ceph storage replication).
+- **Dedicated Storage Node (`k8s-storage-1`):** Equipped with a secondary raw 15 GiB block device (`/dev/vdb`) orchestrated by **Rook-Ceph** providing dynamic Ceph Block Storage (RBD) Persistent Volumes.
 
 ---
 
-## 🏗️ Dual-NIC Architecture & Topology
+## 🏗️ Dual-NIC & Ceph Storage Topology
 
 ```
-                              [ Physical LAN: 192.168.1.0/24 ]
-                                              │
-                                     [ Host Bridge: bridge0 ]
-                                              │
-                      ┌───────────────────────┼───────────────────────┐
-                      │ lan0 (External)       │ lan0 (External)       │ lan0 (External)
-              ┌───────▼───────────────┐ ┌─────▼─────────────────┐ ┌───▼───────────────────┐
-              │ k8s-cp-1              │ │ k8s-worker-1          │ │ k8s-worker-2          │
-              │ 192.168.1.210/24      │ │ 192.168.1.211/24      │ │ 192.168.1.212/24      │
-              │ Gateway: 192.168.1.1  │ │ Gateway: 192.168.1.1  │ │ Gateway: 192.168.1.1  │
-              │ (SSH, Web, MetalLB)   │ │ (SSH, Web, MetalLB)   │ │ (SSH, Web, MetalLB)   │
-              ├───────────────────────┤ ├───────────────────────┤ ├───────────────────────┤
-              │ 10.240.0.10/24        │ │ 10.240.0.11/24        │ │ 10.240.0.12/24        │
-              │ internal0 (Internal)  │ │ internal0 (Internal)  │ │ internal0 (Internal)  │
-              │ (NO Default Gateway)  │ │ (NO Default Gateway)  │ │ (NO Default Gateway)  │
-              └───────▲───────────────┘ └─────▲─────────────────┘ └───▲───────────────────┘
-                      │                       │                       │
-                      └───────────────────────┼───────────────────────┘
-                                              │
-                             [ KVM Internal Virtual Network ]
-                              Subnet: 10.240.0.0/24 (virbr1)
-                              (etcd, API Server, Flannel CNI)
-                                              │
-           ┌──────────────────────────────────┴──────────────────────────────────┐
-           ▼                                                                     ▼
-[ MetalLB Layer 2 Pool ]                                           [ Kubernetes Web Dashboard ]
-  Announced on External LAN: 192.168.1.220 - 192.168.1.230           VIP: https://192.168.1.220 (Port 443)
-  Automatic bare-metal LoadBalancer IPs                              Direct browser access from LAN
+                                      [ Physical LAN: 192.168.1.0/24 ]
+                                                      │
+                                             [ Host Bridge: bridge0 ]
+                                                      │
+                ┌───────────────────────┬─────────────┴─────────┬───────────────────────┐
+                │ lan0 (External)       │ lan0 (External)       │ lan0 (External)       │ lan0 (External)
+        ┌───────▼───────────────┐ ┌─────▼─────────────────┐ ┌───▼───────────────────┐ ┌─▼─────────────────────┐
+        │ k8s-cp-1              │ │ k8s-worker-1          │ │ k8s-worker-2          │ │ k8s-storage-1         │
+        │ 192.168.1.210/24      │ │ 192.168.1.211/24      │ │ 192.168.1.212/24      │ │ 192.168.1.215/24      │
+        │ Gateway: 192.168.1.1  │ │ Gateway: 192.168.1.1  │ │ Gateway: 192.168.1.1  │ │ Gateway: 192.168.1.1  │
+        │ (SSH, Web, MetalLB)   │ │ (SSH, Web, MetalLB)   │ │ (SSH, Web, MetalLB)   │ │ (SSH, Web)            │
+        ├───────────────────────┤ ├───────────────────────┤ ├───────────────────────┤ ├───────────────────────┤
+        │ 10.240.0.10/24        │ │ 10.240.0.11/24        │ │ 10.240.0.12/24        │ │ 10.240.0.15/24        │
+        │ internal0 (Internal)  │ │ internal0 (Internal)  │ │ internal0 (Internal)  │ │ internal0 (Internal)  │
+        │ (NO Default Gateway)  │ │ (NO Default Gateway)  │ │ (NO Default Gateway)  │ │ (NO Default Gateway)  │
+        │                       │ │                       │ │                       │ │ /dev/vdb: 15 GiB raw  │
+        └───────▲───────────────┘ └─────▲─────────────────┘ └───▲───────────────────┘ └─▲─────────────────────┘
+                │                       │                       │                       │
+                └───────────────────────┴───────────────┬───────┴───────────────────────┘
+                                                        │
+                                     [ KVM Internal Virtual Network ]
+                                      Subnet: 10.240.0.0/24 (virbr1)
+                                      (etcd, API Server, Flannel CNI, Ceph Storage I/O)
+                                                        │
+                     ┌──────────────────────────────────┴──────────────────────────────────┐
+                     ▼                                                                     ▼
+          [ MetalLB Layer 2 Pool ]                                           [ Rook-Ceph Block Storage ]
+            Announced on LAN: 192.168.1.220 - 192.168.1.230                   StorageClass: rook-ceph-block
+            VIP: https://192.168.1.220 (Dashboard port 443)                   Dynamic PVC Provisioning (RBD)
 ```
 
 ---
@@ -85,46 +87,32 @@ A modular, production-standard Infrastructure-as-Code (Terraform) and Configurat
 
 ---
 
-## 🔀 Choosing Architecture: Single-NIC vs Dual-NIC
+## 🔀 Choosing Architecture: Single-NIC vs Dual-NIC vs Ceph Storage
 
-This repository provides two complete deployment architectures managed via Git branches:
+This repository provides three complete deployment architectures managed via Git branches:
 
-| Architecture | Git Branch | Network Topology | Best Used For |
+| Architecture | Git Branch | Network Topology & Storage | Best Used For |
 | :--- | :--- | :--- | :--- |
-| **Single-NIC** | `main` | Single `lan0` attached to host `bridge0` (`192.168.1.0/24`). All traffic (SSH, intra-cluster k8s, MetalLB) shares the LAN subnet. | Simplicity, home labs, flat network setups. |
-| **Dual-NIC** | `dual-nic` | Dual-NIC per VM: `lan0` on `bridge0` (`192.168.1.0/24`) for external access + `internal0` on isolated KVM network (`10.240.0.0/24`) for etcd, control plane, and Flannel overlay. | Production realism, security boundary separation, isolating cluster control plane from LAN. |
+| **Single-NIC** | `main` | 3 Nodes on single `bridge0` (`192.168.1.0/24`). | Simplicity, home labs, flat network setups. |
+| **Dual-NIC** | `dual-nic` | 3 Nodes with `lan0` (`192.168.1.0/24`) + `internal0` (`10.240.0.0/24`). | Production realism, control plane network isolation. |
+| **Dual-NIC + Ceph** | `dual-nic-ceph` (active) | 4 Nodes (adds `k8s-storage-1` with 15 GiB raw OSD disk) + **Rook-Ceph** distributed block storage. | Distributed enterprise storage, stateful workloads with dynamic PVCs. |
 
-### Switching Between Single-NIC and Dual-NIC
+### Switching Between Architectures
 
 > [!IMPORTANT]
-> When switching between architectures, **always tear down the active cluster first** because the VM network hardware definitions and interface counts differ between the two branches:
+> When switching between architectures, **always tear down the active cluster first** because the VM network hardware definitions, node counts, and disk attachments differ between branches:
 
-#### To Deploy Single-NIC:
+#### To Deploy Dual-NIC with Ceph Storage:
 ```bash
 cd ~/k8s-terraform
 # 1. Teardown active cluster & clean keys
 terraform destroy -auto-approve
-ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; rm -f kubeconfig ~/.kube/config
+ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; ssh-keygen -R 192.168.1.215 2>/dev/null; rm -f kubeconfig ~/.kube/config
 
-# 2. Switch to single-NIC baseline
-git checkout main
+# 2. Switch to dual-nic-ceph branch
+git checkout dual-nic-ceph
 
-# 3. Provision and bootstrap
-terraform apply -auto-approve
-cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
-```
-
-#### To Deploy Dual-NIC:
-```bash
-cd ~/k8s-terraform
-# 1. Teardown active cluster & clean keys
-terraform destroy -auto-approve
-ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; rm -f kubeconfig ~/.kube/config
-
-# 2. Switch to dual-NIC branch
-git checkout dual-nic
-
-# 3. Provision and bootstrap
+# 3. Provision and bootstrap (provisions VMs, bootstraps k8s, MetalLB, Dashboard, and Rook-Ceph)
 terraform apply -auto-approve
 cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
 ```
@@ -219,6 +207,54 @@ ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.211
 
 # Worker 2
 ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.212
+
+# Storage Node
+ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.215
+```
+
+---
+
+## 📦 Ceph Storage Operations & Verification
+
+### 1. Check Ceph Cluster Status
+Access the Ceph toolbox to inspect cluster health, MONs, and OSDs:
+```bash
+kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph status
+```
+
+Expected healthy output:
+```text
+  cluster:
+    id:     ...
+    health: HEALTH_OK
+
+  services:
+    mon: 1 daemons, quorum a
+    mgr: a(active)
+    osd: 1 osds: 1 up, 1 in
+```
+
+### 2. Verify StorageClass
+```bash
+kubectl get storageclass
+```
+Expected output:
+```text
+NAME                        PROVISIONER                     RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+rook-ceph-block (default)   rook-ceph.rbd.csi.ceph.com      Delete          Immediate           true                   5m
+```
+
+### 3. Test Dynamic PVC Provisioning
+Deploy the test PVC and Pod:
+```bash
+kubectl apply -f manifests/ceph/test-pvc.yaml
+
+# Watch PVC bind to a newly created Ceph block image
+kubectl get pvc,pods -l app=ceph-test
+```
+Cleanup test workload:
+```bash
+kubectl delete -f manifests/ceph/test-pvc.yaml
 ```
 
 ---
@@ -226,15 +262,15 @@ ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.212
 ## 🔄 Teardown & Clean Rebuild
 
 ```bash
-# 1. Destroy only the VM instances and disks (keeps ubuntu base image cached)
-terraform destroy -target=module.control_plane -target=module.workers -auto-approve
+# 1. Destroy VMs and disks
+terraform destroy -auto-approve
 
 # 2. Clean old SSH host keys from host
-ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; rm -f kubeconfig ~/.kube/config
+ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; ssh-keygen -R 192.168.1.215 2>/dev/null; rm -f kubeconfig ~/.kube/config
 
-# 3. Recreate VMs in ~10 seconds
+# 3. Recreate VMs
 terraform apply -auto-approve
 
-# 4. Re-run bootstrap
+# 4. Re-run bootstrap (configures k8s, MetalLB, Dashboard, and Ceph)
 cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
 ```

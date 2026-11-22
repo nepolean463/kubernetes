@@ -18,6 +18,20 @@ resource "libvirt_volume" "disk" {
   }
 }
 
+# Optional secondary raw data disk (e.g. for Ceph OSD)
+resource "libvirt_volume" "extra_disk" {
+  count    = var.extra_disk_size > 0 ? 1 : 0
+  name     = "${var.node_name}-data.qcow2"
+  pool     = var.libvirt_pool
+  capacity = var.extra_disk_size
+
+  target = {
+    format = {
+      type = "qcow2"
+    }
+  }
+}
+
 # Cloud-Init ISO generation
 resource "libvirt_cloudinit_disk" "init" {
   name = "${var.node_name}-cloudinit"
@@ -79,50 +93,74 @@ resource "libvirt_domain" "node" {
   }
 
   devices = {
-    disks = [
-      {
-        device = "disk"
-        driver = {
-          name = "qemu"
-          type = "qcow2"
-        }
-        source = {
-          file = {
-            file = libvirt_volume.disk.path
-          }
-        }
-        backing_store = {
-          format = {
+    disks = concat(
+      [
+        {
+          device = "disk"
+          driver = {
+            name = "qemu"
             type = "qcow2"
           }
           source = {
             file = {
-              file = var.base_volume_path
+              file = libvirt_volume.disk.path
             }
           }
-        }
-        target = {
-          dev = "vda"
-          bus = "virtio"
-        }
-      },
-      {
-        device = "cdrom"
-        driver = {
-          name = "qemu"
-          type = "raw"
-        }
-        source = {
-          file = {
-            file = libvirt_volume.cloudinit_vol.path
+          backing_store = {
+            format = {
+              type = "qcow2"
+            }
+            source = {
+              file = {
+                file = var.base_volume_path
+              }
+            }
+          }
+          target = {
+            dev = "vda"
+            bus = "virtio"
           }
         }
-        target = {
-          dev = "sda"
-          bus = "sata"
+      ],
+      var.extra_disk_size > 0 ? [
+        {
+          device = "disk"
+          driver = {
+            name = "qemu"
+            type = "qcow2"
+          }
+          source = {
+            file = {
+              file = libvirt_volume.extra_disk[0].path
+            }
+          }
+          backing_store = null
+          target = {
+            dev = "vdb"
+            bus = "virtio"
+          }
         }
-      }
-    ]
+      ] : [],
+      [
+        {
+          device = "cdrom"
+          driver = {
+            name = "qemu"
+            type = "raw"
+          }
+          source = {
+            file = {
+              file = libvirt_volume.cloudinit_vol.path
+            }
+          }
+          backing_store = null
+          target = {
+            dev = "sda"
+            bus = "sata"
+          }
+        }
+      ]
+    )
 
     interfaces = [
       # NIC 1: External LAN Bridge (bridge0)

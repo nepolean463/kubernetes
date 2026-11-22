@@ -28,6 +28,8 @@ packages:
   - conntrack
   - ipset
   - ethtool
+  - lvm2
+  - xfsprogs
 
 write_files:
   - path: /etc/modules-load.d/k8s.conf
@@ -36,6 +38,7 @@ write_files:
     content: |
       overlay
       br_netfilter
+      rbd
 
   - path: /etc/sysctl.d/99-kubernetes-cri.conf
     owner: root:root
@@ -53,9 +56,11 @@ write_files:
       10.240.0.10 k8s-cp-1
       10.240.0.11 k8s-worker-1
       10.240.0.12 k8s-worker-2
+      10.240.0.15 k8s-storage-1
       192.168.1.210 k8s-cp-1-ext
       192.168.1.211 k8s-worker-1-ext
       192.168.1.212 k8s-worker-2-ext
+      192.168.1.215 k8s-storage-1-ext
 
   - path: /etc/crictl.yaml
     owner: root:root
@@ -72,9 +77,10 @@ runcmd:
   - sed -i '/swap/d' /etc/fstab
   - systemctl mask swap.target
 
-  # 2. Kernel modules & sysctl settings for Kubernetes networking
+  # 2. Kernel modules & sysctl settings for Kubernetes networking and Ceph
   - modprobe overlay
   - modprobe br_netfilter
+  - modprobe rbd
   - sysctl --system
 
   # 3. Configure containerd with SystemdCgroup = true

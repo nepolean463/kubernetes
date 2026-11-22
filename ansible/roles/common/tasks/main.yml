@@ -16,8 +16,8 @@
     name: swap.target
     masked: true
 
-# 2. Kernel modules for Kubernetes networking
-- name: Configure kernel modules for Kubernetes
+# 2. Kernel modules for Kubernetes networking and Ceph storage
+- name: Configure kernel modules for Kubernetes and Ceph
   ansible.builtin.copy:
     dest: /etc/modules-load.d/k8s.conf
     owner: root
@@ -26,12 +26,14 @@
     content: |
       overlay
       br_netfilter
+      rbd
 
-- name: Load overlay and br_netfilter kernel modules
+- name: Load overlay, br_netfilter, and rbd kernel modules
   ansible.builtin.command: "modprobe {{ item }}"
   loop:
     - overlay
     - br_netfilter
+    - rbd
   changed_when: false
 
 # 3. Sysctl parameters for Kubernetes networking
@@ -50,8 +52,8 @@
   ansible.builtin.command: sysctl --system
   changed_when: false
 
-# 4. Container Runtime (containerd)
-- name: Install required prerequisite packages and containerd
+# 4. Container Runtime (containerd) & Storage Utilities
+- name: Install required prerequisite packages, containerd, and storage utilities
   ansible.builtin.apt:
     name:
       - apt-transport-https
@@ -61,6 +63,8 @@
       - socat
       - conntrack
       - containerd
+      - lvm2
+      - xfsprogs
     state: present
     update_cache: true
     cache_valid_time: 3600

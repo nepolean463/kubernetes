@@ -30,9 +30,9 @@
   roles:
     - control_plane
 
-# Play 3: Join Worker Nodes to the Cluster
-- name: Join Worker Nodes to Cluster
-  hosts: workers
+# Play 3: Join Worker and Storage Nodes to the Cluster
+- name: Join Worker and Storage Nodes to Cluster
+  hosts: workers,storage
   gather_facts: false
   become: true
   roles:
@@ -58,6 +58,14 @@
       ansible.builtin.command: >
         kubectl label node {{ item }} node.kubernetes.io/external-ip={{ hostvars[item]['ansible_host'] }} --overwrite
       loop: "{{ groups['k8s_cluster'] }}"
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+      changed_when: false
+
+    - name: Label dedicated storage nodes with storage role
+      ansible.builtin.command: >
+        kubectl label node {{ item }} node-role.kubernetes.io/storage=true --overwrite
+      loop: "{{ groups['storage'] | default([]) }}"
       environment:
         KUBECONFIG: /home/ubuntu/.kube/config
       changed_when: false
@@ -167,3 +175,6 @@
           - "🌐 Dashboard URL: https://{{ dashboard_ip.stdout }}"
           - "🔑 Admin Token:   {{ raw_token.stdout | b64decode }}"
           - "=========================================================="
+
+# Play 6: Automatically Deploy Rook-Ceph Distributed Storage
+- import_playbook: deploy-ceph.yml

@@ -120,3 +120,29 @@ variable "workers" {
     }
   }
 }
+
+variable "storage_nodes" {
+  type = map(object({
+    vcpu             = number
+    memory           = number
+    disk_size        = number
+    extra_disk_size  = number
+    ip_cidr          = string
+    mac_address      = string
+    internal_ip_cidr = string
+    internal_mac     = string
+  }))
+  description = "Hardware specifications and networking for dedicated Kubernetes Ceph storage nodes"
+  default = {
+    "k8s-storage-1" = {
+      vcpu             = 2
+      memory           = 3072          # 3 GiB RAM for Ceph OSD & Mon
+      disk_size        = 21474836480   # 20 GiB root disk
+      extra_disk_size  = 16106127360   # 15 GiB raw Ceph OSD disk (15 * 1024^3)
+      ip_cidr          = "192.168.1.215/24"
+      mac_address      = "52:54:00:10:01:15"
+      internal_ip_cidr = "10.240.0.15/24"
+      internal_mac     = "52:54:00:20:01:15"
+    }
+  }
+}

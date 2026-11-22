@@ -20,6 +20,12 @@ variable "disk_size" {
   default     = 21474836480 # 20 GiB
 }
 
+variable "extra_disk_size" {
+  type        = number
+  description = "Capacity of an optional secondary raw data disk in bytes (e.g. for Ceph OSD). If 0, no extra disk is created."
+  default     = 0
+}
+
 variable "memory" {
   type        = number
   description = "Memory allocation in MiB"

@@ -76,3 +76,32 @@ module "workers" {
     libvirt_network.k8s_internal
   ]
 }
+
+# Dedicated Ceph Storage Nodes (provisioned using for_each with extra raw data disk)
+module "storage_nodes" {
+  for_each = var.storage_nodes
+  source   = "./modules/k8s-node"
+
+  node_name             = each.key
+  libvirt_pool          = var.libvirt_pool
+  base_volume_path      = libvirt_volume.ubuntu_base.path
+  disk_size             = each.value.disk_size
+  extra_disk_size       = each.value.extra_disk_size
+  memory                = each.value.memory
+  vcpu                  = each.value.vcpu
+  network_name          = libvirt_network.k8s_bridge.name
+  ip_cidr               = each.value.ip_cidr
+  mac_address           = each.value.mac_address
+  internal_network_name = libvirt_network.k8s_internal.name
+  internal_ip_cidr      = each.value.internal_ip_cidr
+  internal_mac_address  = each.value.internal_mac
+  gateway               = var.gateway
+  dns_servers           = var.dns_servers
+  ssh_public_key        = local.ssh_public_key
+
+  depends_on = [
+    libvirt_volume.ubuntu_base,
+    libvirt_network.k8s_bridge,
+    libvirt_network.k8s_internal
+  ]
+}

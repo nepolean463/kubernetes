@@ -7,8 +7,8 @@ This document is the operational Method of Procedure (MOP) for provisioning, con
 
 ## 1. Document Overview
 
-- **Project:** `k8s-terraform` (Branch: `dual-nic`)
-- **Environment:** Local Ubuntu KVM/libvirt Host (Dual-NIC: Physical Bridge LAN + Isolated KVM Network)
+- **Project:** `k8s-terraform` (Branch: `dual-nic-ceph`)
+- **Environment:** Local Ubuntu KVM/libvirt Host (Dual-NIC: Physical Bridge LAN + Isolated KVM Network + Dedicated Ceph Storage)
 - **Node Allocations:**
   - Control Plane: `k8s-cp-1`
     - External LAN (`lan0`): `192.168.1.210/24` (Gateway: `192.168.1.1`, SSH, MetalLB, Web)
@@ -22,8 +22,13 @@ This document is the operational Method of Procedure (MOP) for provisioning, con
     - External LAN (`lan0`): `192.168.1.212/24` (Gateway: `192.168.1.1`, SSH, MetalLB, Web)
     - Internal KVM (`internal0`): `10.240.0.12/24` (No Gateway, Flannel)
     - Resources: 2 vCPU, 2048 MiB RAM, 20 GiB disk
+  - Storage Node 1: `k8s-storage-1`
+    - External LAN (`lan0`): `192.168.1.215/24` (Gateway: `192.168.1.1`, SSH)
+    - Internal KVM (`internal0`): `10.240.0.15/24` (No Gateway, Flannel, Ceph OSD replication)
+    - Resources: 2 vCPU, 3072 MiB RAM, 20 GiB root disk (`/dev/vda`) + 15 GiB raw Ceph OSD disk (`/dev/vdb`)
 - **Pod Network CIDR:** `10.244.0.0/16` (Flannel CNI bound to `--iface-regex=10.240.0.*`)
 - **MetalLB LoadBalancer Pool:** `192.168.1.220 - 192.168.1.230` (Layer 2 announced on `lan0`)
+- **Ceph StorageClass:** `rook-ceph-block` (RBD dynamic PVC provisioning)
 - **Kubernetes Version:** `v1.35.10`
 
 ---

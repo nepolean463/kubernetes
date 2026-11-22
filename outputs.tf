@@ -34,6 +34,27 @@ output "worker_ssh_commands" {
   }
 }
 
+output "storage_ips" {
+  description = "External LAN IP addresses of Kubernetes storage nodes"
+  value = {
+    for k, v in module.storage_nodes : k => v.ip
+  }
+}
+
+output "storage_internal_ips" {
+  description = "Internal KVM IP addresses of Kubernetes storage nodes"
+  value = {
+    for k, v in module.storage_nodes : k => v.internal_ip
+  }
+}
+
+output "storage_ssh_commands" {
+  description = "Ready-to-run SSH commands for storage nodes"
+  value = {
+    for k, v in module.storage_nodes : k => "ssh -i ~/.ssh/id_ed25519_sno ubuntu@${v.ip}"
+  }
+}
+
 output "cluster_summary" {
   description = "Summary of all provisioned nodes, roles, IPs, and connection commands"
   value = merge(
@@ -50,6 +71,16 @@ output "cluster_summary" {
     {
       for k, v in module.workers : k => {
         role         = "worker"
+        external_ip  = v.ip
+        internal_ip  = v.internal_ip
+        external_mac = v.mac_address
+        internal_mac = v.internal_mac_address
+        ssh_command  = "ssh -i ~/.ssh/id_ed25519_sno ubuntu@${v.ip}"
+      }
+    },
+    {
+      for k, v in module.storage_nodes : k => {
+        role         = "storage"
         external_ip  = v.ip
         internal_ip  = v.internal_ip
         external_mac = v.mac_address
