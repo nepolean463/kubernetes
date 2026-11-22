@@ -18,6 +18,40 @@ This document is the operational Method of Procedure (MOP) for provisioning, con
 
 ---
 
+## 1.1. Architecture Selection & Git Branching Strategy
+
+This repository maintains two operational architectures via Git branches:
+
+- **`main` Branch (Single-NIC):** Baseline architecture where all VMs attach solely to `bridge0` (`192.168.1.0/24`). All Kubernetes services, control plane, and overlay traffic share the physical LAN.
+- **`dual-nic` Branch (Dual-NIC):** Advanced architecture where each VM has two network interfaces (`lan0` for physical LAN access and `internal0` for isolated KVM cluster communication).
+
+### Switching Procedure on Local System:
+1. **Always clean up active VM state before switching branches:**
+   ```bash
+   cd ~/k8s-terraform
+   terraform destroy -auto-approve
+   ssh-keygen -R 192.168.1.210 2>/dev/null
+   ssh-keygen -R 192.168.1.211 2>/dev/null
+   ssh-keygen -R 192.168.1.212 2>/dev/null
+   rm -f kubeconfig ~/.kube/config
+   ```
+2. **Switch to desired branch:**
+   ```bash
+   # For Single-NIC:
+   git checkout main
+
+   # For Dual-NIC:
+   git checkout dual-nic
+   ```
+3. **Provision and bootstrap:**
+   ```bash
+   terraform apply -auto-approve
+   cd ansible && source .venv/bin/activate
+   ansible-playbook -i inventory.ini site.yml
+   ```
+
+---
+
 ## 2. Phase 1: Pre-Flight Verification
 
 Execute these pre-checks on the hypervisor host before initiating deployment:

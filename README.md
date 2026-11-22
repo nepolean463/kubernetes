@@ -76,6 +76,52 @@ All nodes are bridged directly to the host's physical network via `bridge0` (`19
 
 ---
 
+## 🔀 Choosing Architecture: Single-NIC vs Dual-NIC
+
+This repository provides two complete deployment architectures managed via Git branches:
+
+| Architecture | Git Branch | Network Topology | Best Used For |
+| :--- | :--- | :--- | :--- |
+| **Single-NIC** | `main` (active) | Single `lan0` attached to host `bridge0` (`192.168.1.0/24`). All traffic (SSH, intra-cluster k8s, MetalLB) shares the LAN subnet. | Simplicity, home labs, flat network setups. |
+| **Dual-NIC** | `dual-nic` | Dual-NIC per VM: `lan0` on `bridge0` (`192.168.1.0/24`) for external access + `internal0` on isolated KVM network (`10.240.0.0/24`) for etcd, control plane, and Flannel overlay. | Production realism, security boundary separation, isolating cluster control plane from LAN. |
+
+### Switching Between Single-NIC and Dual-NIC
+
+> [!IMPORTANT]
+> When switching between architectures on your local machine, **always tear down the active cluster first** because the VM network hardware definitions and interface counts differ between the two branches:
+
+#### To Deploy Single-NIC:
+```bash
+cd ~/k8s-terraform
+# 1. Teardown active cluster & clean keys
+terraform destroy -auto-approve
+ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; rm -f kubeconfig ~/.kube/config
+
+# 2. Switch to single-NIC baseline
+git checkout main
+
+# 3. Provision and bootstrap
+terraform apply -auto-approve
+cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
+```
+
+#### To Deploy Dual-NIC:
+```bash
+cd ~/k8s-terraform
+# 1. Teardown active cluster & clean keys
+terraform destroy -auto-approve
+ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; rm -f kubeconfig ~/.kube/config
+
+# 2. Switch to dual-NIC branch
+git checkout dual-nic
+
+# 3. Provision and bootstrap
+terraform apply -auto-approve
+cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
+```
+
+---
+
 ## 🚀 Quick Start & Lifecycle Management
 
 ### 1. Terraform Infrastructure Provisioning
