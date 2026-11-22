@@ -137,3 +137,13 @@
   ansible.builtin.systemd:
     name: kubelet
     enabled: true
+
+- name: Configure kubelet node-ip to use internal KVM network
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      KUBELET_EXTRA_ARGS="--node-ip={{ internal_ip }}"
+  notify: Restart kubelet

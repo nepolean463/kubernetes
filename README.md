@@ -1,33 +1,42 @@
-# Local Kubernetes Cluster on KVM/libvirt with Terraform & Ansible
+# Local Kubernetes Cluster on KVM/libvirt (Dual-NIC Architecture)
 
-A modular, production-standard Infrastructure-as-Code (Terraform) and Configuration Management (Ansible) project to provision and bootstrap a 3-node Kubernetes cluster (`v1.35`) on local KVM/libvirt.
-
-All nodes are bridged directly to the host's physical network via `bridge0` (`192.168.1.0/24`). Includes **MetalLB** bare-metal Layer 2 load balancing and the **Kubernetes Web Dashboard** exposed on standard HTTPS port `443`.
+A modular, production-standard Infrastructure-as-Code (Terraform) and Configuration Management (Ansible) project to provision and bootstrap a 3-node Kubernetes cluster (`v1.35`) with **Dual-NIC separation**:
+- **External Network (`lan0`):** Attached directly to physical host `bridge0` (`192.168.1.0/24`) for LAN access, SSH, internet routing, and MetalLB LoadBalancer VIPs (`192.168.1.220`).
+- **Internal Network (`internal0`):** Attached to an isolated KVM-managed virtual network (`10.240.0.0/24`) dedicated to intra-cluster Kubernetes traffic (`kubelet --node-ip`, `kube-apiserver --advertise-address`, etcd, and Flannel CNI overlay).
 
 ---
 
-## 🏗️ Architecture & Topology
+## 🏗️ Dual-NIC Architecture & Topology
 
 ```
-                       [ LAN / Physical Network: 192.168.1.0/24 ]
-                                        │
-                               [ Host Bridge: bridge0 ]
-                                        │
-    ┌───────────────────────────────────┼───────────────────────────────────┐
-    │                                   │                                   │
-┌───▼─────────────────────┐ ┌───────────▼─────────┐ ┌───────────────────────▼───┐
-│ k8s-cp-1                │ │ k8s-worker-1        │ │ k8s-worker-2              │
-│ 192.168.1.210           │ │ 192.168.1.211       │ │ 192.168.1.212             │
-│ Control Plane (v1.35)   │ │ Worker Node (v1.35) │ │ Worker Node (v1.35)       │
-│ 2 vCPU / 4096 MiB RAM   │ │ 2 vCPU / 2048 MiB   │ │ 2 vCPU / 2048 MiB         │
-│ Flannel CNI             │ │ containerd runtime  │ │ containerd runtime        │
-└─────────────────────────┘ └─────────────────────┘ └───────────────────────────┘
-                                        │
-           ┌────────────────────────────┴────────────────────────────┐
-           ▼                                                         ▼
-[ MetalLB Layer 2 Pool ]                               [ Kubernetes Web Dashboard ]
-  IP Range: 192.168.1.220 - 192.168.1.230                VIP: https://192.168.1.220 (Port 443)
-  Automatic bare-metal LoadBalancer IPs                  Full OpenShift-like UI experience
+                              [ Physical LAN: 192.168.1.0/24 ]
+                                              │
+                                     [ Host Bridge: bridge0 ]
+                                              │
+                      ┌───────────────────────┼───────────────────────┐
+                      │ lan0 (External)       │ lan0 (External)       │ lan0 (External)
+              ┌───────▼───────────────┐ ┌─────▼─────────────────┐ ┌───▼───────────────────┐
+              │ k8s-cp-1              │ │ k8s-worker-1          │ │ k8s-worker-2          │
+              │ 192.168.1.210/24      │ │ 192.168.1.211/24      │ │ 192.168.1.212/24      │
+              │ Gateway: 192.168.1.1  │ │ Gateway: 192.168.1.1  │ │ Gateway: 192.168.1.1  │
+              │ (SSH, Web, MetalLB)   │ │ (SSH, Web, MetalLB)   │ │ (SSH, Web, MetalLB)   │
+              ├───────────────────────┤ ├───────────────────────┤ ├───────────────────────┤
+              │ 10.240.0.10/24        │ │ 10.240.0.11/24        │ │ 10.240.0.12/24        │
+              │ internal0 (Internal)  │ │ internal0 (Internal)  │ │ internal0 (Internal)  │
+              │ (NO Default Gateway)  │ │ (NO Default Gateway)  │ │ (NO Default Gateway)  │
+              └───────▲───────────────┘ └─────▲─────────────────┘ └───▲───────────────────┘
+                      │                       │                       │
+                      └───────────────────────┼───────────────────────┘
+                                              │
+                             [ KVM Internal Virtual Network ]
+                              Subnet: 10.240.0.0/24 (virbr1)
+                              (etcd, API Server, Flannel CNI)
+                                              │
+           ┌──────────────────────────────────┴──────────────────────────────────┐
+           ▼                                                                     ▼
+[ MetalLB Layer 2 Pool ]                                           [ Kubernetes Web Dashboard ]
+  Announced on External LAN: 192.168.1.220 - 192.168.1.230           VIP: https://192.168.1.220 (Port 443)
+  Automatic bare-metal LoadBalancer IPs                              Direct browser access from LAN
 ```
 
 ---
@@ -49,29 +58,29 @@ All nodes are bridged directly to the host's physical network via `bridge0` (`19
 │   ├── dashboard.yaml          # Kubernetes Dashboard with LoadBalancer on port 443 & admin RBAC
 │   ├── metallb-config.yaml     # MetalLB IPAddressPool (192.168.1.220-230) & L2Advertisement
 │   └── metallb-native.yaml     # Official MetalLB native operator manifest
-├── main.tf                     # Base Ubuntu volume & module invocations
-├── network.tf                  # libvirt_network bridge0 mapping
-├── outputs.tf                  # Node IP maps and ready-to-run SSH strings
+├── main.tf                     # Base Ubuntu volume, dual-NIC attachments & module calls
+├── network.tf                  # libvirt_network bridge0 and k8s-internal definitions
+├── outputs.tf                  # External and Internal Node IP maps, ready-to-run SSH strings
 ├── providers.tf                # dmacvicar/libvirt (~> 0.9.9) provider definition
-├── variables.tf                # Sizing, networking, and zero-config cluster variables
+├── variables.tf                # Sizing, dual-NIC MACs, IP CIDRs, and zero-config cluster variables
 ├── terraform.tfvars.example    # Template variable values for custom environments
 ├── modules/
 │   └── k8s-node/               # Reusable KVM VM node module
-│       ├── main.tf             # Domain, backing store volume, cloud-init ISO
+│       ├── main.tf             # Domain with 2 virtio NICs, disk backing store, cloud-init ISO
 │       ├── providers.tf        # Provider requirements for child module
-│       ├── variables.tf        # Node module input definitions
-│       ├── outputs.tf          # Node IP and domain outputs
-│       ├── cloud-init.yaml.tftpl   # User config, SSH keys, swap disabling
-│       └── network-config.yaml.tftpl # Netplan v2 static LAN configuration
+│       ├── variables.tf        # Node module input definitions (dual-NIC parameters)
+│       ├── outputs.tf          # Node external/internal IPs and MAC addresses
+│       ├── cloud-init.yaml.tftpl   # User config, SSH keys, swap disabling, /etc/hosts mapping
+│       └── network-config.yaml.tftpl # Netplan v2 deterministic MAC matching for dual NICs
 └── ansible/                    # Production-grade Ansible automation
     ├── ansible.cfg             # SSH pipelining, sudo, inventory configuration
-    ├── inventory.ini           # Cluster inventory (control_plane, workers)
+    ├── inventory.ini           # Cluster inventory with ansible_host and internal_ip
     ├── inventory.ini.example   # Example cluster inventory template
     ├── site.yml                # Main orchestrator playbook (pre-flight, k8s, MetalLB, Dashboard)
     └── roles/
-        ├── common/             # Kernel modules, sysctl, containerd, k8s packages
-        ├── control_plane/      # kubeadm init, Flannel CNI, kubeconfig fetch
-        └── worker/             # Dynamic token extraction & kubeadm join
+        ├── common/             # Kernel modules, sysctl, containerd, kubelet --node-ip
+        ├── control_plane/      # kubeadm init on internal IP, extra SANs, Flannel internal CNI
+        └── worker/             # Dynamic token extraction & kubeadm join over internal IP
 ```
 
 ---
@@ -83,7 +92,7 @@ All nodes are bridged directly to the host's physical network via `bridge0` (`19
 ```bash
 cd ~/k8s-terraform
 
-# Review plan & apply (creates disks, ISOs, and boots VMs)
+# Review plan & apply (provisions 2 virtual networks, disks, ISOs, and boots 2-NIC VMs)
 terraform apply -auto-approve
 ```
 
@@ -128,7 +137,7 @@ The **Kubernetes Dashboard** is exposed via MetalLB on standard HTTPS port `443`
 
 ### From the Host Machine
 
-`kubectl` is automatically pointed to the generated kubeconfig:
+`kubectl` connects over the external LAN IP with valid TLS SAN certificates:
 
 ```bash
 export KUBECONFIG=~/k8s-terraform/kubeconfig
@@ -137,12 +146,8 @@ kubectl get nodes -o wide
 kubectl get pods -A
 ```
 
-### From Other LAN Machines
-
-Copy `~/k8s-terraform/kubeconfig` to your other machines and place it at `~/.kube/config`. The API server endpoint is reachable directly at:
-```
-https://192.168.1.210:6443
-```
+Notice that `kubectl get nodes -o wide` displays:
+- **INTERNAL-IP:** `10.240.0.10`, `10.240.0.11`, `10.240.0.12` (Internal KVM network)
 
 ### Node SSH Access
 
@@ -159,9 +164,7 @@ ssh -i ~/.ssh/id_ed25519_sno ubuntu@192.168.1.212
 
 ---
 
-## 🔄 Fast Cluster Teardown & Rebuild
-
-To completely destroy and rebuild the cluster from scratch in under 2 minutes:
+## 🔄 Teardown & Clean Rebuild
 
 ```bash
 # 1. Destroy only the VM instances and disks (keeps ubuntu base image cached)
@@ -173,22 +176,6 @@ ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null
 # 3. Recreate VMs in ~10 seconds
 terraform apply -auto-approve
 
-# 4. Re-run bootstrap (deploys k8s, MetalLB, and Dashboard automatically)
+# 4. Re-run bootstrap
 cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
-```
-
----
-
-## 🛠️ Verification Output
-
-```bash
-$ kubectl get nodes -o wide
-NAME           STATUS   ROLES           AGE   VERSION    INTERNAL-IP     OS-IMAGE             CONTAINER-RUNTIME
-k8s-cp-1       Ready    control-plane   60m   v1.35.10   192.168.1.210   Ubuntu 24.04.5 LTS   containerd://2.2.1
-k8s-worker-1   Ready    <none>          60m   v1.35.10   192.168.1.211   Ubuntu 24.04.5 LTS   containerd://2.2.1
-k8s-worker-2   Ready    <none>          60m   v1.35.10   192.168.1.212   Ubuntu 24.04.5 LTS   containerd://2.2.1
-
-$ kubectl get svc -n kubernetes-dashboard
-NAME                   TYPE           CLUSTER-IP       EXTERNAL-IP     PORT(S)         AGE
-kubernetes-dashboard   LoadBalancer   10.100.108.197   192.168.1.220   443:30443/TCP   15m
 ```

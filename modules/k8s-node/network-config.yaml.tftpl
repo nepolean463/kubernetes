@@ -2,7 +2,7 @@ version: 2
 ethernets:
   lan0:
     match:
-      name: "e*"
+      macaddress: "${mac_address}"
     dhcp4: false
     dhcp6: false
     addresses:
@@ -15,3 +15,11 @@ ethernets:
 %{ for dns in dns_servers ~}
         - ${dns}
 %{ endfor ~}
+
+  internal0:
+    match:
+      macaddress: "${internal_mac_address}"
+    dhcp4: false
+    dhcp6: false
+    addresses:
+      - ${internal_ip_cidr}

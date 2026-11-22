@@ -50,9 +50,12 @@ write_files:
     permissions: '0644'
     append: true
     content: |
-      192.168.1.210 k8s-cp-1
-      192.168.1.211 k8s-worker-1
-      192.168.1.212 k8s-worker-2
+      10.240.0.10 k8s-cp-1
+      10.240.0.11 k8s-worker-1
+      10.240.0.12 k8s-worker-2
+      192.168.1.210 k8s-cp-1-ext
+      192.168.1.211 k8s-worker-1-ext
+      192.168.1.212 k8s-worker-2-ext
 
   - path: /etc/crictl.yaml
     owner: root:root

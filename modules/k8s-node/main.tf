@@ -33,9 +33,12 @@ resource "libvirt_cloudinit_disk" "init" {
   })
 
   network_config = templatefile("${path.module}/network-config.yaml.tftpl", {
-    ip_cidr     = var.ip_cidr
-    gateway     = var.gateway
-    dns_servers = var.dns_servers
+    ip_cidr              = var.ip_cidr
+    mac_address          = var.mac_address
+    internal_ip_cidr     = var.internal_ip_cidr
+    internal_mac_address = var.internal_mac_address
+    gateway              = var.gateway
+    dns_servers          = var.dns_servers
   })
 }
 
@@ -122,6 +125,7 @@ resource "libvirt_domain" "node" {
     ]
 
     interfaces = [
+      # NIC 1: External LAN Bridge (bridge0)
       {
         model = {
           type = "virtio"
@@ -130,6 +134,23 @@ resource "libvirt_domain" "node" {
           network = {
             network = var.network_name
           }
+        }
+        mac = {
+          address = var.mac_address
+        }
+      },
+      # NIC 2: Internal KVM Managed Network (k8s-internal)
+      {
+        model = {
+          type = "virtio"
+        }
+        source = {
+          network = {
+            network = var.internal_network_name
+          }
+        }
+        mac = {
+          address = var.internal_mac_address
         }
       }
     ]

@@ -22,6 +22,12 @@ variable "network_name" {
   default     = "k8s-lan-bridge"
 }
 
+variable "internal_network_name" {
+  type        = string
+  description = "Name of the KVM managed internal network"
+  default     = "k8s-internal"
+}
+
 variable "base_image_name" {
   type        = string
   description = "Name of the base Ubuntu qcow2 volume in libvirt storage pool"
@@ -60,42 +66,57 @@ variable "ssh_public_key" {
 
 variable "control_plane" {
   type = object({
-    name      = string
-    vcpu      = number
-    memory    = number
-    disk_size = number
-    ip_cidr   = string
+    name             = string
+    vcpu             = number
+    memory           = number
+    disk_size        = number
+    ip_cidr          = string
+    mac_address      = string
+    internal_ip_cidr = string
+    internal_mac     = string
   })
   description = "Hardware specifications and networking for the Kubernetes control plane node"
   default = {
-    name      = "k8s-cp-1"
-    vcpu      = 2
-    memory    = 4096
-    disk_size = 21474836480 # 20 GiB in bytes
-    ip_cidr   = "192.168.1.210/24"
+    name             = "k8s-cp-1"
+    vcpu             = 2
+    memory           = 4096
+    disk_size        = 21474836480 # 20 GiB in bytes
+    ip_cidr          = "192.168.1.210/24"
+    mac_address      = "52:54:00:10:01:10"
+    internal_ip_cidr = "10.240.0.10/24"
+    internal_mac     = "52:54:00:20:01:10"
   }
 }
 
 variable "workers" {
   type = map(object({
-    vcpu      = number
-    memory    = number
-    disk_size = number
-    ip_cidr   = string
+    vcpu             = number
+    memory           = number
+    disk_size        = number
+    ip_cidr          = string
+    mac_address      = string
+    internal_ip_cidr = string
+    internal_mac     = string
   }))
   description = "Hardware specifications and networking for the Kubernetes worker nodes"
   default = {
     "k8s-worker-1" = {
-      vcpu      = 2
-      memory    = 2048
-      disk_size = 21474836480 # 20 GiB in bytes
-      ip_cidr   = "192.168.1.211/24"
+      vcpu             = 2
+      memory           = 2048
+      disk_size        = 21474836480 # 20 GiB in bytes
+      ip_cidr          = "192.168.1.211/24"
+      mac_address      = "52:54:00:10:01:11"
+      internal_ip_cidr = "10.240.0.11/24"
+      internal_mac     = "52:54:00:20:01:11"
     }
     "k8s-worker-2" = {
-      vcpu      = 2
-      memory    = 2048
-      disk_size = 21474836480 # 20 GiB in bytes
-      ip_cidr   = "192.168.1.212/24"
+      vcpu             = 2
+      memory           = 2048
+      disk_size        = 21474836480 # 20 GiB in bytes
+      ip_cidr          = "192.168.1.212/24"
+      mac_address      = "52:54:00:10:01:12"
+      internal_ip_cidr = "10.240.0.12/24"
+      internal_mac     = "52:54:00:20:01:12"
     }
   }
 }

@@ -32,17 +32,37 @@ variable "vcpu" {
 
 variable "network_name" {
   type        = string
-  description = "Name of the libvirt network to attach to"
+  description = "Name of the external LAN libvirt network"
 }
 
 variable "ip_cidr" {
   type        = string
-  description = "Static IPv4 CIDR address (e.g. 192.168.1.210/24)"
+  description = "Static IPv4 CIDR address for external LAN (e.g. 192.168.1.210/24)"
+}
+
+variable "mac_address" {
+  type        = string
+  description = "MAC address for external LAN interface"
+}
+
+variable "internal_network_name" {
+  type        = string
+  description = "Name of the internal KVM libvirt network"
+}
+
+variable "internal_ip_cidr" {
+  type        = string
+  description = "Static IPv4 CIDR address for internal network (e.g. 10.240.0.10/24)"
+}
+
+variable "internal_mac_address" {
+  type        = string
+  description = "MAC address for internal network interface"
 }
 
 variable "gateway" {
   type        = string
-  description = "Default gateway IPv4 address"
+  description = "Default gateway IPv4 address (only on external interface)"
 }
 
 variable "dns_servers" {
