@@ -137,7 +137,7 @@ variable "storage_nodes" {
     "k8s-storage-1" = {
       vcpu             = 2
       memory           = 2048          # 2 GiB RAM for Ceph OSD & Mon
-      disk_size        = 10737418240   # 10 GiB root disk
+      disk_size        = 16106127360   # 15 GiB root disk (prevents Kubelet DiskPressure)
       extra_disk_size  = 5368709120    # 5 GiB raw Ceph OSD disk (BlueStore minimum)
       ip_cidr          = "192.168.1.215/24"
       mac_address      = "52:54:00:10:01:15"
@@ -147,7 +147,7 @@ variable "storage_nodes" {
     "k8s-storage-2" = {
       vcpu             = 2
       memory           = 2048          # 2 GiB RAM for Ceph OSD & Mon
-      disk_size        = 10737418240   # 10 GiB root disk
+      disk_size        = 16106127360   # 15 GiB root disk (prevents Kubelet DiskPressure)
       extra_disk_size  = 5368709120    # 5 GiB raw Ceph OSD disk (BlueStore minimum)
       ip_cidr          = "192.168.1.216/24"
       mac_address      = "52:54:00:10:01:16"
@@ -157,7 +157,7 @@ variable "storage_nodes" {
     "k8s-storage-3" = {
       vcpu             = 2
       memory           = 2048          # 2 GiB RAM for Ceph OSD & Mon
-      disk_size        = 10737418240   # 10 GiB root disk
+      disk_size        = 16106127360   # 15 GiB root disk (prevents Kubelet DiskPressure)
       extra_disk_size  = 5368709120    # 5 GiB raw Ceph OSD disk (BlueStore minimum)
       ip_cidr          = "192.168.1.217/24"
       mac_address      = "52:54:00:10:01:17"
