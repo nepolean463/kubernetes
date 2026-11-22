@@ -174,3 +174,10 @@ ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_sno -N "" -C "k8s-cluster-admin"
 Verify the key files exist:
 - Private key: `~/.ssh/id_ed25519_sno` (permissions `0600`)
 - Public key: `~/.ssh/id_ed25519_sno.pub` (permissions `0644`)
+
+### E. Install Docker (Optional, for Ceph Container Image Pre-caching)
+Docker is used on the host to execute `./scripts/download-image-cache.sh`. This helper script downloads and consolidates multi-gigabyte Ceph container images into `image-cache/ceph-images.tar` so Ansible can preload them into `containerd` during cluster creation:
+```bash
+sudo apt install -y docker.io
+sudo usermod -aG docker $USER
+```

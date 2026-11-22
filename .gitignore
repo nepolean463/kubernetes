@@ -27,6 +27,10 @@ ansible/facts_cache/
 *.pyc
 __pycache__/
 
+# Local container image cache (large tar archives)
+image-cache/
+*.tar
+
 # System & Editor files
 .DS_Store
 Thumbs.db

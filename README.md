@@ -231,9 +231,9 @@ Expected healthy output:
     health: HEALTH_OK
 
   services:
-    mon: 1 daemons, quorum a
+    mon: 3 daemons, quorum a,b,c
     mgr: a(active)
-    osd: 1 osds: 1 up, 1 in
+    osd: 3 osds: 3 up, 3 in
 ```
 
 ### 2. Verify StorageClass
@@ -261,6 +261,23 @@ kubectl delete -f manifests/ceph/test-pvc.yaml
 
 ---
 
+## ⚡ Fast Rebuilds & Offline Image Caching
+
+When spinning up a 6-node cluster from scratch, downloading multi-gigabyte container images (`rook/ceph`, `ceph/ceph`, `cephcsi`) simultaneously across all VMs can saturate home internet connections or encounter Docker Hub rate limits.
+
+### 1. (Optional) Pre-cache Images on the Host
+Run the helper script on your host machine to download and package the Ceph images into a local cache:
+```bash
+./scripts/download-image-cache.sh
+```
+This saves `image-cache/ceph-images.tar` on your host.
+
+### 2. Opportunistic Preloading in Ansible
+- **If `image-cache/ceph-images.tar` exists:** Ansible automatically copies and imports the images into `containerd` on each node at local disk speeds (~5 seconds per node).
+- **If `image-cache/ceph-images.tar` does not exist:** (e.g. running on a fresh host or another machine), Ansible gracefully skips the import step and Kubernetes pulls images directly from the internet as normal.
+
+---
+
 ## 🔄 Teardown & Clean Rebuild
 
 ```bash
@@ -268,11 +285,14 @@ kubectl delete -f manifests/ceph/test-pvc.yaml
 terraform destroy -auto-approve
 
 # 2. Clean old SSH host keys from host
-ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; ssh-keygen -R 192.168.1.215 2>/dev/null; rm -f kubeconfig ~/.kube/config
+ssh-keygen -R 192.168.1.210 2>/dev/null; ssh-keygen -R 192.168.1.211 2>/dev/null; ssh-keygen -R 192.168.1.212 2>/dev/null; ssh-keygen -R 192.168.1.215 2>/dev/null; ssh-keygen -R 192.168.1.216 2>/dev/null; ssh-keygen -R 192.168.1.217 2>/dev/null; rm -f kubeconfig ~/.kube/config
 
-# 3. Recreate VMs
+# 3. (Optional) Ensure offline image cache is ready for instant rebuild
+# ./scripts/download-image-cache.sh
+
+# 4. Recreate VMs
 terraform apply -auto-approve
 
-# 4. Re-run bootstrap (configures k8s, MetalLB, Dashboard, and Ceph)
+# 5. Re-run bootstrap (configures k8s, MetalLB, Dashboard, and Ceph)
 cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
 ```

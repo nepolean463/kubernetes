@@ -49,8 +49,10 @@
       environment:
         KUBECONFIG: /home/ubuntu/.kube/config
       register: nodes_status
-      until: "nodes_status.stdout.find('NotReady') == -1"
-      retries: 20
+      until:
+        - nodes_status.stdout_lines | length == groups['k8s_cluster'] | length
+        - nodes_status.stdout.find('NotReady') == -1
+      retries: 60
       delay: 5
       changed_when: false
 

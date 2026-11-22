@@ -153,3 +153,37 @@
     content: |
       KUBELET_EXTRA_ARGS="--node-ip={{ internal_ip }}"
   notify: Restart kubelet
+
+# 6. Opportunistic Offline Container Image Cache
+- name: Check if Ceph offline image cache exists on host
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../image-cache/ceph-images.tar"
+  delegate_to: localhost
+  become: false
+  register: image_cache_file
+
+- name: Copy cached Ceph images to node (if available on host)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../image-cache/ceph-images.tar"
+    dest: /tmp/ceph-images.tar
+    mode: '0644'
+  when:
+    - image_cache_file.stat.exists
+    - inventory_hostname in (groups['storage'] | default([]) + groups['workers'] | default([]))
+
+- name: Import cached Ceph images into containerd (if available)
+  ansible.builtin.command: ctr -n k8s.io images import /tmp/ceph-images.tar
+  when:
+    - image_cache_file.stat.exists
+    - inventory_hostname in (groups['storage'] | default([]) + groups['workers'] | default([]))
+  register: ctr_import_result
+  failed_when: false
+  changed_when: "'unpacking' in ctr_import_result.stdout or ctr_import_result.rc == 0"
+
+- name: Clean up temporary cached tarball from node
+  ansible.builtin.file:
+    path: /tmp/ceph-images.tar
+    state: absent
+  when:
+    - image_cache_file.stat.exists
+    - inventory_hostname in (groups['storage'] | default([]) + groups['workers'] | default([]))

@@ -152,6 +152,10 @@ cp terraform.tfvars.example terraform.tfvars
 # cat ~/.ssh/id_ed25519_sno.pub
 nano terraform.tfvars
 
+# (Optional) Pre-cache Ceph Container Images for Fast Rebuilds
+# Avoids pulling multi-gigabyte images across 6 VMs simultaneously
+./scripts/download-image-cache.sh
+
 # Set up Ansible virtual environment
 cd ansible
 python3 -m venv .venv
@@ -289,18 +293,24 @@ virsh start k8s-worker-2
 cd ~/k8s-terraform
 
 # 1. Destroy VMs and root disks
-terraform destroy -target=module.control_plane -target=module.workers -auto-approve
+terraform destroy -auto-approve
 
 # 2. Clear old SSH keys and host kubeconfig
 ssh-keygen -R 192.168.1.210 2>/dev/null
 ssh-keygen -R 192.168.1.211 2>/dev/null
 ssh-keygen -R 192.168.1.212 2>/dev/null
+ssh-keygen -R 192.168.1.215 2>/dev/null
+ssh-keygen -R 192.168.1.216 2>/dev/null
+ssh-keygen -R 192.168.1.217 2>/dev/null
 rm -f kubeconfig ~/.kube/config
 
-# 3. Re-create VMs
+# 3. (Optional) Ensure offline Ceph image cache is populated
+./scripts/download-image-cache.sh
+
+# 4. Re-create VMs
 terraform apply -auto-approve
 
-# 4. Re-run bootstrap
+# 5. Re-run bootstrap
 cd ansible && source .venv/bin/activate && ansible-playbook -i inventory.ini site.yml
 ```
 
